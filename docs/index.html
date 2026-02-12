@@ -1,0 +1,1092 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PriorizAI - Organize suas tarefas com inteligência</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800&family=DM+Sans:wght@400;500;700&display=swap" rel="stylesheet">
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --bg-primary: #0a0e1a;
+            --bg-secondary: #111827;
+            --bg-card: rgba(17, 24, 39, 0.6);
+            --bg-card-hover: rgba(30, 41, 59, 0.7);
+            --accent-primary: #06b6d4;
+            --accent-secondary: #0891b2;
+            --accent-glow: rgba(6, 182, 212, 0.3);
+            --text-primary: #f8fafc;
+            --text-secondary: #cbd5e1;
+            --text-muted: #64748b;
+            --border-color: rgba(148, 163, 184, 0.1);
+            --error: #ef4444;
+            --warning: #fbbf24;
+            --success: #10b981;
+        }
+
+        body {
+            font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: linear-gradient(135deg, #0a0e1a 0%, #1e1b4b 50%, #0a0e1a 100%);
+            min-height: 100vh;
+            color: var(--text-primary);
+            line-height: 1.6;
+            overflow-x: hidden;
+        }
+
+        /* Animated background particles */
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: 
+                radial-gradient(circle at 20% 30%, rgba(6, 182, 212, 0.08) 0%, transparent 50%),
+                radial-gradient(circle at 80% 70%, rgba(14, 165, 233, 0.06) 0%, transparent 50%);
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 2rem;
+            position: relative;
+            z-index: 1;
+        }
+
+        /* Header */
+        header {
+            text-align: center;
+            margin-bottom: 3rem;
+            animation: fadeInDown 0.8s ease-out;
+        }
+
+        .logo {
+            font-family: 'Outfit', sans-serif;
+            font-size: 3.5rem;
+            font-weight: 800;
+            background: linear-gradient(135deg, #06b6d4 0%, #0ea5e9 50%, #06b6d4 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 0.5rem;
+            letter-spacing: -0.02em;
+            position: relative;
+            display: inline-block;
+        }
+
+        .logo::after {
+            content: '';
+            position: absolute;
+            bottom: -8px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 60%;
+            height: 3px;
+            background: linear-gradient(90deg, transparent, var(--accent-primary), transparent);
+            border-radius: 2px;
+        }
+
+        .tagline {
+            font-size: 1.125rem;
+            color: var(--text-secondary);
+            margin-bottom: 0.5rem;
+        }
+
+        .privacy-note {
+            font-size: 0.875rem;
+            color: var(--text-muted);
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            background: rgba(6, 182, 212, 0.05);
+            padding: 0.5rem 1rem;
+            border-radius: 20px;
+            border: 1px solid rgba(6, 182, 212, 0.1);
+        }
+
+        .privacy-icon {
+            width: 16px;
+            height: 16px;
+            background: var(--accent-primary);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.75rem;
+        }
+
+        /* Tab Navigation */
+        .tab-nav {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1rem;
+            margin-bottom: 2.5rem;
+            max-width: 600px;
+            margin-left: auto;
+            margin-right: auto;
+            animation: fadeIn 0.8s ease-out 0.2s both;
+        }
+
+        .tab-btn {
+            padding: 1rem;
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            color: var(--text-secondary);
+            font-family: 'Outfit', sans-serif;
+            font-weight: 600;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .tab-btn::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .tab-btn span {
+            position: relative;
+            z-index: 1;
+        }
+
+        .tab-btn.active {
+            background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+            border-color: var(--accent-primary);
+            color: white;
+            box-shadow: 0 0 30px var(--accent-glow);
+        }
+
+        .tab-btn:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+
+        .tab-btn:not(:disabled):not(.active):hover {
+            background: var(--bg-card-hover);
+            border-color: var(--accent-primary);
+            transform: translateY(-2px);
+        }
+
+        /* Main Grid */
+        .main-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 2rem;
+            animation: fadeIn 0.8s ease-out 0.4s both;
+        }
+
+        /* Card Styles */
+        .card {
+            background: var(--bg-card);
+            backdrop-filter: blur(20px);
+            border: 1px solid var(--border-color);
+            border-radius: 24px;
+            padding: 2rem;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            transition: all 0.3s ease;
+        }
+
+        .card:hover {
+            border-color: rgba(6, 182, 212, 0.3);
+        }
+
+        .card-title {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.75rem;
+            font-weight: 800;
+            margin-bottom: 1.5rem;
+            color: var(--text-primary);
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .card-title::before {
+            content: '';
+            width: 4px;
+            height: 28px;
+            background: linear-gradient(180deg, var(--accent-primary), var(--accent-secondary));
+            border-radius: 2px;
+        }
+
+        /* Form Styles */
+        .form-group {
+            margin-bottom: 1.5rem;
+        }
+
+        label {
+            display: block;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+            color: var(--text-primary);
+            font-size: 0.95rem;
+        }
+
+        .required {
+            color: var(--error);
+            margin-left: 0.25rem;
+        }
+
+        input[type="text"],
+        textarea,
+        select {
+            width: 100%;
+            padding: 0.875rem 1.125rem;
+            background: rgba(15, 23, 42, 0.6);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            color: var(--text-primary);
+            font-family: 'DM Sans', sans-serif;
+            font-size: 0.95rem;
+            transition: all 0.3s ease;
+            outline: none;
+        }
+
+        input[type="text"]:focus,
+        textarea:focus,
+        select:focus {
+            border-color: var(--accent-primary);
+            background: rgba(15, 23, 42, 0.8);
+            box-shadow: 0 0 0 3px var(--accent-glow);
+        }
+
+        textarea {
+            resize: vertical;
+            min-height: 100px;
+        }
+
+        input::placeholder,
+        textarea::placeholder {
+            color: var(--text-muted);
+        }
+
+        /* Method Cards */
+        .method-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .method-card {
+            padding: 1rem;
+            background: rgba(15, 23, 42, 0.4);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            position: relative;
+        }
+
+        .method-card.active {
+            background: linear-gradient(135deg, rgba(6, 182, 212, 0.2), rgba(8, 145, 178, 0.1));
+            border-color: var(--accent-primary);
+            box-shadow: 0 0 20px var(--accent-glow);
+        }
+
+        .method-card.disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+
+        .method-card:not(.disabled):not(.active):hover {
+            border-color: var(--accent-primary);
+            transform: translateY(-2px);
+        }
+
+        .method-name {
+            font-weight: 700;
+            font-size: 1rem;
+            margin-bottom: 0.25rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .method-desc {
+            font-size: 0.8125rem;
+            color: var(--text-muted);
+        }
+
+        .tooltip-icon {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 18px;
+            height: 18px;
+            background: var(--warning);
+            color: var(--bg-primary);
+            border-radius: 50%;
+            font-size: 0.75rem;
+            font-weight: 700;
+            cursor: help;
+        }
+
+        /* Task Items */
+        .tasks-container {
+            max-height: 600px;
+            overflow-y: auto;
+            padding-right: 0.5rem;
+        }
+
+        .tasks-container::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .tasks-container::-webkit-scrollbar-track {
+            background: rgba(15, 23, 42, 0.4);
+            border-radius: 3px;
+        }
+
+        .tasks-container::-webkit-scrollbar-thumb {
+            background: var(--accent-primary);
+            border-radius: 3px;
+        }
+
+        .task-item {
+            background: linear-gradient(135deg, rgba(30, 41, 59, 0.4), rgba(51, 65, 85, 0.3));
+            border-left: 3px solid var(--accent-primary);
+            border-radius: 12px;
+            padding: 1.25rem;
+            margin-bottom: 1rem;
+            animation: slideIn 0.5s ease-out;
+            transition: all 0.3s ease;
+        }
+
+        .task-item:hover {
+            background: linear-gradient(135deg, rgba(30, 41, 59, 0.6), rgba(51, 65, 85, 0.5));
+            transform: translateX(4px);
+        }
+
+        .task-item:nth-child(even) {
+            border-left-color: var(--warning);
+        }
+
+        .task-header {
+            font-size: 0.8125rem;
+            color: var(--text-muted);
+            font-weight: 600;
+            margin-bottom: 0.75rem;
+        }
+
+        .two-col {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+        }
+
+        /* Info Banner */
+        .info-banner {
+            background: linear-gradient(135deg, rgba(251, 191, 36, 0.1), rgba(245, 158, 11, 0.05));
+            border: 1px solid rgba(251, 191, 36, 0.3);
+            border-radius: 12px;
+            padding: 1rem;
+            margin-bottom: 1.5rem;
+            font-size: 0.875rem;
+            color: var(--warning);
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .info-banner::before {
+            content: '⚡';
+            font-size: 1.25rem;
+        }
+
+        .hint-text {
+            font-size: 0.8125rem;
+            color: var(--text-muted);
+            margin-bottom: 1rem;
+            line-height: 1.5;
+        }
+
+        /* Buttons */
+        .btn {
+            padding: 1rem 2rem;
+            border: none;
+            border-radius: 12px;
+            font-family: 'Outfit', sans-serif;
+            font-weight: 700;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.75rem;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .btn::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 0;
+            height: 0;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.2);
+            transform: translate(-50%, -50%);
+            transition: width 0.6s, height 0.6s;
+        }
+
+        .btn:hover::before {
+            width: 300px;
+            height: 300px;
+        }
+
+        .btn span {
+            position: relative;
+            z-index: 1;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+            color: white;
+            box-shadow: 0 4px 20px var(--accent-glow);
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 30px var(--accent-glow);
+        }
+
+        .btn-primary:active {
+            transform: translateY(0);
+        }
+
+        .btn-secondary {
+            background: var(--bg-card);
+            color: var(--text-primary);
+            border: 1px solid var(--border-color);
+        }
+
+        .btn-secondary:hover {
+            background: var(--bg-card-hover);
+            border-color: var(--accent-primary);
+        }
+
+        .btn-secondary:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .btn-full {
+            width: 100%;
+        }
+
+        .btn-group {
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+        }
+
+        .task-counter {
+            font-size: 0.875rem;
+            color: var(--text-muted);
+        }
+
+        /* Results Section */
+        .result-empty {
+            text-align: center;
+            padding: 3rem 1rem;
+            color: var(--text-muted);
+        }
+
+        .result-empty-icon {
+            font-size: 4rem;
+            margin-bottom: 1rem;
+            opacity: 0.3;
+        }
+
+        .loading {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 3rem 1rem;
+            gap: 1.5rem;
+        }
+
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 3px solid rgba(6, 182, 212, 0.2);
+            border-top-color: var(--accent-primary);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .loading-text {
+            color: var(--text-secondary);
+            font-weight: 600;
+        }
+
+        .result-header {
+            background: linear-gradient(135deg, rgba(6, 182, 212, 0.15), rgba(8, 145, 178, 0.05));
+            border: 1px solid rgba(6, 182, 212, 0.3);
+            border-radius: 16px;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .result-message {
+            font-size: 1.125rem;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+            color: var(--text-primary);
+        }
+
+        .result-summary {
+            color: var(--text-secondary);
+            line-height: 1.6;
+            margin-bottom: 0.75rem;
+        }
+
+        .result-stat {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            background: rgba(16, 185, 129, 0.1);
+            color: var(--success);
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            font-weight: 700;
+            font-size: 0.875rem;
+        }
+
+        .ranked-list {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .ranked-item {
+            background: linear-gradient(135deg, rgba(30, 41, 59, 0.5), rgba(15, 23, 42, 0.5));
+            border-radius: 16px;
+            padding: 1.5rem;
+            border-left: 4px solid var(--accent-primary);
+            transition: all 0.3s ease;
+            animation: slideIn 0.5s ease-out;
+        }
+
+        .ranked-item:hover {
+            background: linear-gradient(135deg, rgba(30, 41, 59, 0.7), rgba(15, 23, 42, 0.7));
+            transform: translateX(4px);
+        }
+
+        .ranked-item:nth-child(1) { border-left-color: #fbbf24; }
+        .ranked-item:nth-child(2) { border-left-color: #94a3b8; }
+        .ranked-item:nth-child(3) { border-left-color: #cd7f32; }
+
+        .ranked-header {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .rank-number {
+            font-family: 'Outfit', sans-serif;
+            font-size: 2rem;
+            font-weight: 800;
+            background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            min-width: 40px;
+        }
+
+        .rank-title {
+            font-weight: 700;
+            font-size: 1.125rem;
+            color: var(--text-primary);
+        }
+
+        .rank-explanation {
+            color: var(--text-secondary);
+            line-height: 1.6;
+            margin-bottom: 1rem;
+        }
+
+        .key-points {
+            list-style: none;
+            margin-bottom: 1rem;
+        }
+
+        .key-points li {
+            padding-left: 1.5rem;
+            position: relative;
+            margin-bottom: 0.5rem;
+            color: var(--text-secondary);
+            font-size: 0.9375rem;
+        }
+
+        .key-points li::before {
+            content: '→';
+            position: absolute;
+            left: 0;
+            color: var(--accent-primary);
+            font-weight: 700;
+        }
+
+        .rank-tip {
+            background: rgba(6, 182, 212, 0.05);
+            border-left: 3px solid var(--accent-primary);
+            padding: 0.75rem 1rem;
+            border-radius: 8px;
+            font-size: 0.875rem;
+            color: var(--text-muted);
+            font-style: italic;
+        }
+
+        /* Animations */
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes fadeInDown {
+            from {
+                opacity: 0;
+                transform: translateY(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateX(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+
+        /* Responsive */
+        @media (max-width: 1024px) {
+            .main-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .method-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        @media (max-width: 640px) {
+            .container {
+                padding: 1rem;
+            }
+
+            .logo {
+                font-size: 2.5rem;
+            }
+
+            .card {
+                padding: 1.5rem;
+            }
+
+            .tab-nav {
+                grid-template-columns: 1fr;
+            }
+
+            .two-col {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header>
+            <h1 class="logo">PriorizAI</h1>
+            <p class="tagline">Você escreve suas tarefas. Eu coloco na melhor ordem e explico de um jeito fácil.</p>
+            <div class="privacy-note">
+                <span class="privacy-icon">🔒</span>
+                Nada fica salvo. Eu só uso o que você preencher agora.
+            </div>
+        </header>
+
+        <!-- Tab Navigation -->
+        <div class="tab-nav">
+            <button class="tab-btn active">
+                <span>PriorizAI</span>
+            </button>
+            <button class="tab-btn" disabled>
+                <span>Em breve 2</span>
+            </button>
+            <button class="tab-btn" disabled>
+                <span>Em breve 3</span>
+            </button>
+        </div>
+
+        <!-- Main Grid -->
+        <div class="main-grid">
+            <!-- Left Column - Input -->
+            <div class="card">
+                <h2 class="card-title">Configuração</h2>
+
+                <!-- User Name -->
+                <div class="form-group">
+                    <label>Seu nome <span class="required">*</span></label>
+                    <input type="text" id="userName" placeholder="Ex.: Felipe Castelão" required>
+                </div>
+
+                <!-- Method Selection -->
+                <div class="form-group">
+                    <label>Método de priorização</label>
+                    <p class="hint-text">Por enquanto, só o primeiro está liberado.</p>
+                    <div class="method-grid">
+                        <div class="method-card active" data-method="impact">
+                            <div class="method-name">
+                                Impacto e Esforço
+                                <span class="tooltip-icon" title="Prioriza o que é mais importante e leva menos tempo.">?</span>
+                            </div>
+                            <div class="method-desc">Foco no que importa mais</div>
+                        </div>
+                        <div class="method-card disabled">
+                            <div class="method-name">
+                                RICE
+                                <span class="tooltip-icon" title="Método mais técnico. Vai liberar depois.">?</span>
+                            </div>
+                            <div class="method-desc">Em breve</div>
+                        </div>
+                        <div class="method-card disabled">
+                            <div class="method-name">
+                                MoSCoW
+                                <span class="tooltip-icon" title="Separa em: obrigatório, importante, bom ter, não agora.">?</span>
+                            </div>
+                            <div class="method-desc">Em breve</div>
+                        </div>
+                        <div class="method-card disabled">
+                            <div class="method-name">
+                                GUT
+                                <span class="tooltip-icon" title="Olha gravidade, urgência e tendência. Vai liberar depois.">?</span>
+                            </div>
+                            <div class="method-desc">Em breve</div>
+                        </div>
+                    </div>
+                </div>
+
+                <hr style="margin: 2rem 0;">
+
+                <!-- Tasks Section -->
+                <h2 class="card-title">Tarefas</h2>
+                <p class="hint-text">Dica: escreva prazo, quem depende, e o que acontece se atrasar. Quanto mais claro, melhor.</p>
+                <div class="info-banner">
+                    Preencha no mínimo 3 tarefas completas.
+                </div>
+
+                <div class="tasks-container" id="tasksContainer">
+                    <!-- Task items will be added here dynamically -->
+                </div>
+
+                <div class="btn-group" style="margin-top: 1rem;">
+                    <button class="btn btn-secondary" id="addTaskBtn">
+                        <span>➕ Adicionar tarefa</span>
+                    </button>
+                    <span class="task-counter" id="taskCounter">3/10</span>
+                </div>
+
+                <button class="btn btn-primary btn-full" id="prioritizeBtn" style="margin-top: 1.5rem;">
+                    <span>✨ Priorizar com IA</span>
+                </button>
+            </div>
+
+            <!-- Right Column - Results -->
+            <div class="card">
+                <h2 class="card-title">Resultado</h2>
+                <div id="resultsContainer">
+                    <div class="result-empty">
+                        <div class="result-empty-icon">📋</div>
+                        <p>Os resultados vão aparecer aqui depois que você priorizar.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // State
+        let taskCount = 3;
+        const MAX_TASKS = 10;
+
+        // Initialize tasks
+        function initializeTasks() {
+            const container = document.getElementById('tasksContainer');
+            container.innerHTML = '';
+            
+            for (let i = 1; i <= taskCount; i++) {
+                addTaskElement(i);
+            }
+            updateTaskCounter();
+        }
+
+        // Add task element
+        function addTaskElement(index) {
+            const container = document.getElementById('tasksContainer');
+            const taskItem = document.createElement('div');
+            taskItem.className = 'task-item';
+            taskItem.innerHTML = `
+                <div class="task-header">Tarefa ${index}</div>
+                
+                <div class="form-group">
+                    <label>O que você vai fazer <span class="required">*</span></label>
+                    <input type="text" class="task-title" placeholder="Ex.: Enviar planilha para o fornecedor" required>
+                </div>
+
+                <div class="form-group">
+                    <label>Explique bem <span class="required">*</span></label>
+                    <textarea class="task-desc" placeholder="Ex.: Enviar a planilha X para o fornecedor Y até 16h. Se atrasar, o pedido de amanhã pode travar." required></textarea>
+                </div>
+
+                <div class="two-col">
+                    <div class="form-group">
+                        <label>
+                            Quão importante isso é agora
+                            <span class="tooltip-icon" title="Pense no que você ganha ou evita. Se tem prazo, aumenta a importância.">?</span>
+                        </label>
+                        <select class="task-importance">
+                            <option value="1">Quase não importa</option>
+                            <option value="2">Importa pouco</option>
+                            <option value="3" selected>Importa</option>
+                            <option value="4">Importa muito</option>
+                            <option value="5">É crítico, não dá para adiar</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label>
+                            Quanto tempo isso leva
+                            <span class="tooltip-icon" title="Escolha o tempo total que você acha que vai gastar de verdade.">?</span>
+                        </label>
+                        <select class="task-time">
+                            <option value="1">Menos de 10 min</option>
+                            <option value="2" selected>10 a 30 min</option>
+                            <option value="3">30 min a 2 horas</option>
+                            <option value="4">2 a 6 horas</option>
+                            <option value="5">Mais de 6 horas</option>
+                        </select>
+                    </div>
+                </div>
+            `;
+            container.appendChild(taskItem);
+        }
+
+        // Update task counter
+        function updateTaskCounter() {
+            document.getElementById('taskCounter').textContent = `${taskCount}/${MAX_TASKS}`;
+            document.getElementById('addTaskBtn').disabled = taskCount >= MAX_TASKS;
+        }
+
+        // Add task button
+        document.getElementById('addTaskBtn').addEventListener('click', () => {
+            if (taskCount < MAX_TASKS) {
+                taskCount++;
+                addTaskElement(taskCount);
+                updateTaskCounter();
+            }
+        });
+
+        // Validate form
+        function validateForm() {
+            const userName = document.getElementById('userName').value.trim();
+            if (!userName) {
+                alert('Por favor, preencha seu nome.');
+                return false;
+            }
+
+            const tasks = Array.from(document.querySelectorAll('.task-item'));
+            const completeTasks = tasks.filter(task => {
+                const title = task.querySelector('.task-title').value.trim();
+                const desc = task.querySelector('.task-desc').value.trim();
+                return title && desc;
+            });
+
+            if (completeTasks.length < 3) {
+                alert('Por favor, preencha no mínimo 3 tarefas completas (título e descrição).');
+                return false;
+            }
+
+            return true;
+        }
+
+        // Collect form data
+        function collectFormData() {
+            const userName = document.getElementById('userName').value.trim();
+            const tasks = Array.from(document.querySelectorAll('.task-item'))
+                .map(task => ({
+                    title: task.querySelector('.task-title').value.trim(),
+                    description: task.querySelector('.task-desc').value.trim(),
+                    importance: parseInt(task.querySelector('.task-importance').value),
+                    time: parseInt(task.querySelector('.task-time').value)
+                }))
+                .filter(task => task.title && task.description);
+
+            return { userName, tasks };
+        }
+
+        // Show loading state
+        function showLoading() {
+            const container = document.getElementById('resultsContainer');
+            container.innerHTML = `
+                <div class="loading">
+                    <div class="spinner"></div>
+                    <div class="loading-text">Analisando suas tarefas...</div>
+                </div>
+            `;
+        }
+
+        // Mock API call (replace with actual API)
+        async function prioritizeTasks(data) {
+            // Simulate API delay
+            await new Promise(resolve => setTimeout(resolve, 2000));
+
+            // Mock response - in production, this would call your actual API
+            return {
+                friendlyMessage: `Oi ${data.userName}! Organizei suas tarefas na melhor ordem pra você.`,
+                summary: 'Comece pelas tarefas importantes que levam menos tempo. Assim você vai sentir progresso rápido e não vai deixar nada crítico pra depois.',
+                estimatedTimeSaved: 35,
+                rankedTasks: data.tasks
+                    .sort((a, b) => {
+                        // Simple impact/effort scoring
+                        const scoreA = a.importance / a.time;
+                        const scoreB = b.importance / b.time;
+                        return scoreB - scoreA;
+                    })
+                    .map((task, index) => ({
+                        position: index + 1,
+                        title: task.title,
+                        explanation: `Esta tarefa tem importância ${task.importance}/5 e leva aproximadamente ${getTimeLabel(task.time)}. Por isso ficou na posição ${index + 1}.`,
+                        keyPoints: [
+                            'Equilíbrio entre impacto e tempo investido',
+                            'Ajuda a manter o foco no que mais importa'
+                        ],
+                        tip: index === 0 ? '💡 Comece por aqui! É sua prioridade máxima.' : '✅ Mantenha no radar.'
+                    }))
+            };
+        }
+
+        function getTimeLabel(value) {
+            const labels = {
+                1: 'menos de 10 minutos',
+                2: '10 a 30 minutos',
+                3: '30 minutos a 2 horas',
+                4: '2 a 6 horas',
+                5: 'mais de 6 horas'
+            };
+            return labels[value] || 'tempo estimado';
+        }
+
+        // Display results
+        function displayResults(results) {
+            const container = document.getElementById('resultsContainer');
+            
+            const rankedListHTML = results.rankedTasks.map(task => `
+                <div class="ranked-item">
+                    <div class="ranked-header">
+                        <div class="rank-number">${task.position}</div>
+                        <div class="rank-title">${task.title}</div>
+                    </div>
+                    <div class="rank-explanation">${task.explanation}</div>
+                    <ul class="key-points">
+                        ${task.keyPoints.map(point => `<li>${point}</li>`).join('')}
+                    </ul>
+                    <div class="rank-tip">${task.tip}</div>
+                </div>
+            `).join('');
+
+            container.innerHTML = `
+                <div class="result-header">
+                    <div class="result-message">${results.friendlyMessage}</div>
+                    <div class="result-summary">${results.summary}</div>
+                    <div class="result-stat">
+                        📊 Tempo economizado estimado: ${results.estimatedTimeSaved}%
+                    </div>
+                </div>
+                <div class="ranked-list">
+                    ${rankedListHTML}
+                </div>
+            `;
+
+            // Scroll to results on mobile
+            if (window.innerWidth <= 1024) {
+                container.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+        }
+
+        // Prioritize button click
+        document.getElementById('prioritizeBtn').addEventListener('click', async () => {
+            if (!validateForm()) return;
+
+            const formData = collectFormData();
+            showLoading();
+
+            try {
+                const results = await prioritizeTasks(formData);
+                displayResults(results);
+            } catch (error) {
+                document.getElementById('resultsContainer').innerHTML = `
+                    <div class="result-empty">
+                        <div class="result-empty-icon">❌</div>
+                        <p>Ops! Algo deu errado. Tente novamente.</p>
+                    </div>
+                `;
+            }
+        });
+
+        // Method card selection (visual only, since only one is active)
+        document.querySelectorAll('.method-card:not(.disabled)').forEach(card => {
+            card.addEventListener('click', () => {
+                document.querySelectorAll('.method-card').forEach(c => c.classList.remove('active'));
+                card.classList.add('active');
+            });
+        });
+
+        // Initialize
+        initializeTasks();
+    </script>
+</body>
+</html>
