@@ -1,3 +1,4 @@
 name = "priorizai-api"
 main = "index.js"
 compatibility_date = "2026-02-12"
+preview_urls = true
