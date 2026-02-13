@@ -1,75 +1,51 @@
-/* app.js - PriorizAI + CalmAI + BriefAI */
+/* app.js - PriorizAI + CalmAI + BriefAI (novo layout) */
 (() => {
   "use strict";
 
-  // =========================
-  // Configuração
-  // =========================
+  // ========= CONFIG =========
+  // Cole aqui a URL do seu Worker (sempre com https://)
+  // Exemplo: https://priorizai.felipelcas.workers.dev
   const WORKER_BASE_URL = "https://priorizai.felipelcas.workers.dev";
-  const BASE = normalizeBaseUrl(WORKER_BASE_URL);
 
-  const ENDPOINTS = {
-    prioritize: `${BASE}/prioritize`,
-    calmai: `${BASE}/calmai`,
-    briefai: `${BASE}/briefai`,
-  };
+  const MAX_TASKS = 10;
+  const MIN_TASKS = 3;
 
-  const LIMITS = {
-    minTasks: 3,
-    maxTasks: 10,
-    calmMax: 500,
-    briefMax: 1500,
+  const MODULE_DESCRIPTIONS = {
+    priorizai: "Você escreve suas tarefas. Eu coloco na melhor ordem e explico de um jeito fácil.",
+    calmai: "Conte seu problema. A Diva do Caos vai te provocar, cutucar e te ajudar a ver de outro jeito.",
+    briefai: "Cole qualquer texto bagunçado. Eu transformo em um briefing organizado e objetivo.",
   };
 
   const IMPORTANCE = [
-    { value: 1, label: "Quase não importa" },
-    { value: 2, label: "Importa pouco" },
-    { value: 3, label: "Importa" },
-    { value: 4, label: "Importa muito" },
-    { value: 5, label: "É crítico, não dá para adiar" },
+    { label: "Quase não importa", value: 1 },
+    { label: "Importa pouco", value: 2 },
+    { label: "Importa", value: 3 },
+    { label: "Importa muito", value: 4 },
+    { label: "É crítico", value: 5 },
   ];
 
   const TIME_COST = [
-    { value: 1, label: "Menos de 10 min" },
-    { value: 2, label: "10 a 30 min" },
-    { value: 3, label: "30 min a 2 horas" },
-    { value: 4, label: "2 a 6 horas" },
-    { value: 5, label: "Mais de 6 horas" },
+    { label: "Menos de 10 min", value: 1 },
+    { label: "10 a 30 min", value: 2 },
+    { label: "30 min a 2h", value: 3 },
+    { label: "2 a 6 horas", value: 4 },
+    { label: "Mais de 6h", value: 5 },
   ];
 
-  // =========================
-  // Estado
-  // =========================
-  const state = {
-    selectedMethod: "impact_effort",
-    taskCount: 0,
-    pending: {
-      prioritize: false,
-      calm: false,
-      brief: false,
-    },
-  };
-
-  // =========================
-  // Helpers
-  // =========================
-  const byId = (id) => document.getElementById(id);
+  // ========= HELPERS =========
+  const $ = (id) => document.getElementById(id);
 
   function normalizeBaseUrl(url) {
     const raw = String(url || "").trim();
     if (!raw) return "";
-    const withProtocol = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
-    return withProtocol.replace(/\/+$/, "");
-  }
-
-  function cleanText(value) {
-    return String(value || "").replace(/\u0000/g, "").trim();
+    const withProto = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
+    return withProto.replace(/\/+$/, "");
   }
 
   function looksLikeInjection(text) {
     const t = String(text || "").toLowerCase();
 
-    const xssPatterns = [
+    const xss = [
       "<script",
       "</script",
       "<iframe",
@@ -80,10 +56,9 @@
       "onerror=",
       "onload=",
     ];
+    if (xss.some((p) => t.includes(p))) return true;
 
-    if (xssPatterns.some((p) => t.includes(p))) return true;
-
-    const sqlPatterns = [
+    const sqli = [
       " union select",
       "drop table",
       "insert into",
@@ -91,732 +66,488 @@
       "update ",
       " or 1=1",
       "' or '1'='1",
-      '" or "1"="1',
+      "\" or \"1\"=\"1",
       "--",
       "/*",
       "*/",
     ];
+    if (sqli.some((p) => t.includes(p))) return true;
 
-    return sqlPatterns.some((p) => t.includes(p));
+    return false;
   }
 
-  function requireSafeText(field, value, { required = false, min = 0, max = 9999 } = {}) {
+  function cleanText(text) {
+    return String(text || "").replace(/\u0000/g, "").trim();
+  }
+
+  function requireSafeText(fieldName, value, { required = false, min = 0, max = 9999 } = {}) {
     const v = cleanText(value);
 
-    if (required && !v) throw new Error(`Preencha: ${field}.`);
+    if (required && !v) throw new Error(`Preencha: ${fieldName}.`);
     if (!required && !v) return "";
 
-    if (v.length < min) throw new Error(`${field} está muito curto.`);
-    if (v.length > max) throw new Error(`${field} passou do limite de caracteres.`);
-    if (looksLikeInjection(v)) throw new Error(`${field} parece ter conteúdo perigoso. Ajuste o texto.`);
+    if (v.length < min) throw new Error(`${fieldName} está muito curto.`);
+    if (v.length > max) throw new Error(`${fieldName} passou do limite de caracteres.`);
 
+    if (looksLikeInjection(v)) {
+      throw new Error(`${fieldName} parece ter conteúdo perigoso. Ajuste o texto e tente de novo.`);
+    }
     return v;
   }
 
-  function safeNumber(value, fallback = 0) {
-    const n = Number(value);
-    return Number.isFinite(n) ? n : fallback;
+  function escapeHtml(str) {
+    return String(str || "")
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#039;");
   }
 
-  function optionLabel(list, value) {
-    const n = Number(value);
-    const found = list.find((x) => x.value === n);
-    return found ? found.label : "";
+  function scrollToResults() {
+    const section = $("resultsSection");
+    if (!section) return;
+    section.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
-  function scrollToTop() {
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  }
+  // ========= STATE =========
+  let currentModule = "priorizai";
+  let selectedMethod = "impact_effort";
+  let taskCount = MIN_TASKS;
 
-  function setDisabled(id, isDisabled) {
-    const el = byId(id);
-    if (el) el.disabled = Boolean(isDisabled);
-  }
-
-  function setBusy(buttonId, pendingFlag, labelBusy, labelDefault) {
-    const btn = byId(buttonId);
-    if (!btn) return;
-
-    state.pending[pendingFlag] = !state.pending[pendingFlag];
-    const busy = state.pending[pendingFlag];
-    btn.disabled = busy;
-
-    const span = btn.querySelector("span");
-    if (span) span.textContent = busy ? labelBusy : labelDefault;
-  }
-
-  // =========================
-  // Tabs
-  // =========================
-  function setActiveTab(tab) {
-    document.querySelectorAll(".tab-btn[data-tab]").forEach((btn) => {
-      btn.classList.toggle("active", btn.dataset.tab === tab);
-    });
-
-    const views = {
-      priorizai: byId("viewPriorizai"),
-      calmai: byId("viewCalmai"),
-      briefai: byId("viewBriefai"),
+  // ========= API =========
+  function getApiUrls() {
+    const base = normalizeBaseUrl(WORKER_BASE_URL);
+    return {
+      base,
+      prioritize: base ? `${base}/prioritize` : "",
+      calmai: base ? `${base}/calmai` : "",
+      briefai: base ? `${base}/briefai` : "",
     };
-
-    Object.entries(views).forEach(([key, node]) => {
-      if (!node) return;
-      node.style.display = key === tab ? "grid" : "none";
-    });
-
-    scrollToTop();
   }
 
-  function initTabs() {
-    document.querySelectorAll(".tab-btn[data-tab]").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        if (btn.disabled) return;
-        setActiveTab(btn.dataset.tab || "priorizai");
+  async function callWorkerJson(url, payload) {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    const text = await res.text();
+    let data = null;
+    try {
+      data = text ? JSON.parse(text) : null;
+    } catch {
+      // ignore
+    }
+
+    if (!res.ok) {
+      const msg = (data && (data.error || data.message)) || text || "Erro ao chamar o Worker.";
+      throw new Error(msg);
+    }
+    return data || {};
+  }
+
+  // ========= UI: MODULE SWITCH =========
+  function switchModule(module) {
+    currentModule = module;
+
+    document.querySelectorAll(".module-tab").forEach((t) => t.classList.remove("active"));
+    document.querySelector(`.module-tab[data-module="${module}"]`)?.classList.add("active");
+
+    document.querySelectorAll(".module-content").forEach((c) => c.classList.remove("active"));
+    document.querySelector(`.module-content[data-module="${module}"]`)?.classList.add("active");
+
+    const desc = $("moduleDescription");
+    if (desc) desc.textContent = MODULE_DESCRIPTIONS[module] || "";
+
+    const resultsSection = $("resultsSection");
+    if (resultsSection) resultsSection.style.display = "none";
+  }
+
+  function initModuleTabs() {
+    document.querySelectorAll(".module-tab").forEach((tab) => {
+      tab.addEventListener("click", () => {
+        const module = tab.dataset.module;
+        if (!module) return;
+        switchModule(module);
       });
     });
   }
 
-  // =========================
-  // Método
-  // =========================
+  // ========= UI: METHOD =========
   function initMethodCards() {
-    const cards = Array.from(document.querySelectorAll(".method-card"));
-
-    cards.forEach((card) => {
+    document.querySelectorAll(".method-card").forEach((card) => {
       card.addEventListener("click", () => {
         if (card.classList.contains("disabled")) return;
 
-        cards.forEach((c) => c.classList.remove("active"));
+        document.querySelectorAll(".method-card").forEach((c) => c.classList.remove("active"));
         card.classList.add("active");
 
-        const method = card.dataset.method || "impact";
-        state.selectedMethod = method === "impact" ? "impact_effort" : "impact_effort";
+        const v = String(card.dataset.method || "").trim();
+        selectedMethod = v === "impact_effort" ? "impact_effort" : "impact_effort";
       });
     });
   }
 
-  // =========================
-  // Render utilitário
-  // =========================
-  function renderLoading(container, text) {
-    container.innerHTML = "";
-
-    const wrap = document.createElement("div");
-    wrap.className = "loading";
-
-    const spinner = document.createElement("div");
-    spinner.className = "spinner";
-
-    const message = document.createElement("div");
-    message.className = "loading-text";
-    message.textContent = text;
-
-    wrap.appendChild(spinner);
-    wrap.appendChild(message);
-    container.appendChild(wrap);
+  // ========= UI: TASKS =========
+  function optionHtml(list, selectedValue) {
+    return list
+      .map((o) => {
+        const sel = o.value === selectedValue ? " selected" : "";
+        return `<option value="${o.value}"${sel}>${escapeHtml(o.label)}</option>`;
+      })
+      .join("");
   }
 
-  function renderError(container, message) {
-    container.innerHTML = "";
+  function addTaskElement(index) {
+    const container = $("taskList");
+    if (!container) return;
 
-    const header = document.createElement("div");
-    header.className = "result-header";
+    const taskCard = document.createElement("div");
+    taskCard.className = "task-card";
+    taskCard.innerHTML = `
+      <div class="task-number">Task ${String(index).padStart(2, "0")}</div>
 
-    const title = document.createElement("div");
-    title.className = "result-message";
-    title.textContent = "Ops. Deu problema.";
+      <div class="form-group">
+        <label class="label">O que você vai fazer <span class="required">*</span></label>
+        <input type="text" class="task-title" placeholder="Ex.: Enviar planilha para o fornecedor" required>
+      </div>
 
-    const desc = document.createElement("div");
-    desc.className = "result-summary";
-    desc.textContent = String(message || "Erro inesperado.");
+      <div class="form-group">
+        <label class="label">Explique bem <span class="required">*</span></label>
+        <textarea class="task-desc" placeholder="Ex.: Enviar a planilha X para o fornecedor Y até 16h. Se atrasar, o pedido de amanhã pode travar." required></textarea>
+      </div>
 
-    header.appendChild(title);
-    header.appendChild(desc);
+      <div class="input-row">
+        <div class="form-group">
+          <label class="label">Importância <span class="help-badge" title="Pense no impacto. Prazo aumenta a importância.">?</span></label>
+          <select class="task-importance">
+            ${optionHtml(IMPORTANCE, 3)}
+          </select>
+        </div>
 
-    container.appendChild(header);
-  }
+        <div class="form-group">
+          <label class="label">Tempo necessário <span class="help-badge" title="Tempo total estimado">?</span></label>
+          <select class="task-time">
+            ${optionHtml(TIME_COST, 2)}
+          </select>
+        </div>
+      </div>
+    `;
 
-  // =========================
-  // Tarefas
-  // =========================
-  function makeOption(value, label) {
-    const opt = document.createElement("option");
-    opt.value = String(value);
-    opt.textContent = label;
-    return opt;
-  }
-
-  function makeTooltipIcon(title) {
-    const span = document.createElement("span");
-    span.className = "tooltip-icon";
-    span.title = title;
-    span.textContent = "?";
-    return span;
-  }
-
-  function createTaskItem(index) {
-    const item = document.createElement("div");
-    item.className = "task-item";
-    item.dataset.index = String(index);
-
-    const header = document.createElement("div");
-    header.className = "task-header";
-    header.textContent = `Tarefa ${index}`;
-    item.appendChild(header);
-
-    // Título
-    const g1 = document.createElement("div");
-    g1.className = "form-group";
-
-    const l1 = document.createElement("label");
-    l1.textContent = "O que você vai fazer ";
-    const req1 = document.createElement("span");
-    req1.className = "required";
-    req1.textContent = "*";
-    l1.appendChild(req1);
-
-    const title = document.createElement("input");
-    title.type = "text";
-    title.id = `taskTitle_${index}`;
-    title.placeholder = "Ex.: Enviar planilha para o fornecedor (até 16h)";
-
-    g1.appendChild(l1);
-    g1.appendChild(title);
-    item.appendChild(g1);
-
-    // Descrição
-    const g2 = document.createElement("div");
-    g2.className = "form-group";
-
-    const l2 = document.createElement("label");
-    l2.textContent = "Explique bem ";
-    const req2 = document.createElement("span");
-    req2.className = "required";
-    req2.textContent = "*";
-    l2.appendChild(req2);
-
-    const desc = document.createElement("textarea");
-    desc.id = `taskDesc_${index}`;
-    desc.maxLength = 800;
-    desc.placeholder =
-      "Ex.: Enviar a planilha X para o fornecedor Y até 16h. Se atrasar, o pedido de amanhã pode travar. Depende de mim e de mais 1 pessoa.";
-
-    g2.appendChild(l2);
-    g2.appendChild(desc);
-    item.appendChild(g2);
-
-    // Escalas
-    const two = document.createElement("div");
-    two.className = "two-col";
-
-    const g3 = document.createElement("div");
-    g3.className = "form-group";
-
-    const l3 = document.createElement("label");
-    l3.textContent = "Quão importante isso é agora ";
-    l3.appendChild(makeTooltipIcon("Pense no impacto do atraso e no valor da entrega."));
-
-    const imp = document.createElement("select");
-    imp.id = `taskImp_${index}`;
-    IMPORTANCE.forEach((x) => imp.appendChild(makeOption(x.value, x.label)));
-    imp.value = "3";
-
-    g3.appendChild(l3);
-    g3.appendChild(imp);
-
-    const g4 = document.createElement("div");
-    g4.className = "form-group";
-
-    const l4 = document.createElement("label");
-    l4.textContent = "Quanto tempo isso leva ";
-    l4.appendChild(makeTooltipIcon("Escolha o tempo total real, sem otimizar demais."));
-
-    const time = document.createElement("select");
-    time.id = `taskTime_${index}`;
-    TIME_COST.forEach((x) => time.appendChild(makeOption(x.value, x.label)));
-    time.value = "2";
-
-    g4.appendChild(l4);
-    g4.appendChild(time);
-
-    two.appendChild(g3);
-    two.appendChild(g4);
-    item.appendChild(two);
-
-    return item;
+    container.appendChild(taskCard);
   }
 
   function updateTaskCounter() {
-    const counter = byId("taskCounter");
-    if (counter) counter.textContent = `${state.taskCount}/${LIMITS.maxTasks}`;
+    const el = $("taskCounter");
+    if (el) el.textContent = `${taskCount}/${MAX_TASKS}`;
 
-    const addBtn = byId("addTaskBtn");
-    if (addBtn) addBtn.disabled = state.taskCount >= LIMITS.maxTasks;
+    const btn = $("addTaskBtn");
+    if (btn) btn.disabled = taskCount >= MAX_TASKS;
   }
 
-  function ensureInitialTasks() {
-    const container = byId("tasksContainer");
+  function initializeTasks() {
+    const container = $("taskList");
     if (!container) return;
 
     container.innerHTML = "";
-    state.taskCount = 0;
-
-    for (let i = 1; i <= LIMITS.minTasks; i += 1) {
-      state.taskCount += 1;
-      container.appendChild(createTaskItem(state.taskCount));
-    }
-
+    for (let i = 1; i <= taskCount; i++) addTaskElement(i);
     updateTaskCounter();
   }
 
   function addTask() {
-    if (state.taskCount >= LIMITS.maxTasks) return;
-
-    const container = byId("tasksContainer");
-    if (!container) return;
-
-    state.taskCount += 1;
-    container.appendChild(createTaskItem(state.taskCount));
-
+    if (taskCount >= MAX_TASKS) return;
+    taskCount += 1;
+    addTaskElement(taskCount);
     updateTaskCounter();
   }
 
-  function collectPrioritizePayload() {
-    const name = requireSafeText("Seu nome", byId("userName")?.value, {
-      required: true,
-      min: 2,
-      max: 60,
-    });
+  // ========= UI: RESULTS =========
+  function showLoading(text) {
+    const section = $("resultsSection");
+    const container = $("resultsContainer");
+    if (!section || !container) return;
 
+    section.style.display = "block";
+    container.innerHTML = `
+      <div class="loading">
+        <div class="spinner"></div>
+        <div class="loading-text">${escapeHtml(text || "Processando com IA...")}</div>
+      </div>
+    `;
+    scrollToResults();
+  }
+
+  function showError(message) {
+    const section = $("resultsSection");
+    const container = $("resultsContainer");
+    if (!section || !container) return;
+
+    section.style.display = "block";
+    container.innerHTML = `
+      <div class="result-empty">
+        <div class="result-icon">❌</div>
+        <p>${escapeHtml(message || "Erro ao processar. Tente novamente.")}</p>
+      </div>
+    `;
+    scrollToResults();
+  }
+
+  function setBusy(isBusy) {
+    const btn = $("processBtn");
+    if (!btn) return;
+    btn.disabled = !!isBusy;
+    btn.style.opacity = isBusy ? "0.6" : "1";
+  }
+
+  function displayPriorizaiResults(data) {
+    const container = $("resultsContainer");
+    if (!container) return;
+
+    const ordered = Array.isArray(data.ordered_tasks) ? data.ordered_tasks : [];
+
+    const orderRows = ordered
+      .map(
+        (t) => `
+      <tr>
+        <td style="color: var(--accent-cyan); font-weight: 700;">${escapeHtml(t.position)}</td>
+        <td>${escapeHtml(t.task_title)}</td>
+      </tr>`
+      )
+      .join("");
+
+    const orderTableHTML = `
+      <table class="order-table">
+        <thead>
+          <tr>
+            <th style="width: 80px;">Ordem</th>
+            <th>Tarefa</th>
+          </tr>
+        </thead>
+        <tbody>${orderRows || '<tr><td colspan="2">Sem itens</td></tr>'}</tbody>
+      </table>
+    `;
+
+    const rankedListHTML = ordered
+      .map((task) => {
+        const keyPoints = Array.isArray(task.key_points) ? task.key_points : [];
+        return `
+          <div class="ranked-item">
+            <div class="ranked-header">
+              <div class="rank-number">${escapeHtml(task.position)}</div>
+              <div class="rank-title">${escapeHtml(task.task_title)}</div>
+            </div>
+            ${task.explanation ? `<div class="rank-explanation">${escapeHtml(task.explanation)}</div>` : ""}
+            ${
+              keyPoints.length
+                ? `<ul class="key-points">${keyPoints.map((p) => `<li>${escapeHtml(p)}</li>`).join("")}</ul>`
+                : ""
+            }
+            ${task.tip ? `<div class="rank-tip">${escapeHtml(task.tip)}</div>` : ""}
+          </div>
+        `;
+      })
+      .join("");
+
+    const statHTML =
+      data.estimated_time_saved_percent !== null && data.estimated_time_saved_percent !== undefined
+        ? `<div class="stat-badge">📊 Tempo economizado: ${escapeHtml(data.estimated_time_saved_percent)}%</div>`
+        : "";
+
+    container.innerHTML = `
+      <div class="result-header">
+        <div class="result-message">${escapeHtml(data.friendly_message || "Priorização concluída")}</div>
+        ${data.summary ? `<div class="result-summary">${escapeHtml(data.summary)}</div>` : ""}
+        ${statHTML}
+      </div>
+      ${orderTableHTML}
+      <div class="ranked-list">${rankedListHTML}</div>
+    `;
+  }
+
+  function displayCalmaiResults(data) {
+    const container = $("resultsContainer");
+    if (!container) return;
+
+    const reply = String(data.reply || "Sem resposta");
+    const paragraphs = reply
+      .split("\n")
+      .map((p) => p.trim())
+      .filter(Boolean)
+      .map((p) => `<p style="margin-bottom: 1rem;">${escapeHtml(p)}</p>`)
+      .join("");
+
+    container.innerHTML = `
+      <div class="result-header">
+        <div class="result-message">💭 Diva do Caos responde</div>
+      </div>
+      <div class="calmai-response">${paragraphs || `<p>${escapeHtml(reply)}</p>`}</div>
+    `;
+  }
+
+  function displayBriefaiResults(data) {
+    const container = $("resultsContainer");
+    if (!container) return;
+
+    const missingInfo = Array.isArray(data.missingInfo) ? data.missingInfo : [];
+    const nextSteps = Array.isArray(data.nextSteps) ? data.nextSteps : [];
+
+    const missingInfoHTML = missingInfo.length
+      ? `
+        <div class="brief-section">
+          <div class="brief-title">📌 Informações Faltando</div>
+          <ul class="brief-list">
+            ${missingInfo.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}
+          </ul>
+        </div>`
+      : "";
+
+    const nextStepsHTML = nextSteps.length
+      ? `
+        <div class="brief-section">
+          <div class="brief-title">🎯 Próximos Passos</div>
+          <ul class="brief-list">
+            ${nextSteps.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}
+          </ul>
+        </div>`
+      : "";
+
+    container.innerHTML = `
+      <div class="result-header">
+        <div class="result-message">${escapeHtml(data.friendlyMessage || "Briefing gerado")}</div>
+        ${data.summary ? `<div class="result-summary">${escapeHtml(data.summary)}</div>` : ""}
+      </div>
+
+      <div class="brief-section">
+        <div class="brief-title">📄 Briefing Estruturado</div>
+        <div class="brief-content">${escapeHtml(data.brief || "")}</div>
+      </div>
+
+      ${missingInfoHTML}
+      ${nextStepsHTML}
+    `;
+  }
+
+  // ========= ACTIONS =========
+  function collectPriorizaiPayload() {
+    const name = requireSafeText("Seu nome", $("userName")?.value, { required: true, min: 2, max: 60 });
+
+    const cards = Array.from(document.querySelectorAll(".task-card"));
     const tasks = [];
 
-    for (let i = 1; i <= state.taskCount; i += 1) {
-      const titleEl = byId(`taskTitle_${i}`);
-      const descEl = byId(`taskDesc_${i}`);
-      const impEl = byId(`taskImp_${i}`);
-      const timeEl = byId(`taskTime_${i}`);
+    for (let i = 0; i < cards.length; i++) {
+      const idx = i + 1;
+      const card = cards[i];
 
-      if (!titleEl || !descEl || !impEl || !timeEl) continue;
+      const titleRaw = cleanText(card.querySelector(".task-title")?.value);
+      const descRaw = cleanText(card.querySelector(".task-desc")?.value);
 
-      const titleRaw = cleanText(titleEl.value);
-      const descRaw = cleanText(descEl.value);
+      const isEmpty = !titleRaw && !descRaw;
+      if (isEmpty) continue;
 
-      if (!titleRaw && !descRaw) continue;
+      const title = requireSafeText(`Tarefa ${idx} - título`, titleRaw, { required: true, min: 3, max: 80 });
+      const description = requireSafeText(`Tarefa ${idx} - descrição`, descRaw, { required: true, min: 10, max: 800 });
 
-      const title = requireSafeText(`Tarefa ${i} - título`, titleRaw, {
-        required: true,
-        min: 3,
-        max: 80,
-      });
+      const impEl = card.querySelector(".task-importance");
+      const timeEl = card.querySelector(".task-time");
 
-      const description = requireSafeText(`Tarefa ${i} - descrição`, descRaw, {
-        required: true,
-        min: 10,
-        max: 800,
-      });
+      const importance = Number(impEl?.value);
+      const time_cost = Number(timeEl?.value);
 
-      const importance = safeNumber(impEl.value, 3);
-      const time_cost = safeNumber(timeEl.value, 2);
+      const importance_label = impEl?.options?.[impEl.selectedIndex]?.text || "";
+      const time_label = timeEl?.options?.[timeEl.selectedIndex]?.text || "";
 
       tasks.push({
         title,
         description,
         importance,
         time_cost,
-        importance_label: optionLabel(IMPORTANCE, importance),
-        time_label: optionLabel(TIME_COST, time_cost),
+        importance_label,
+        time_label,
       });
     }
 
-    if (tasks.length < LIMITS.minTasks) {
-      throw new Error(`Preencha no mínimo ${LIMITS.minTasks} tarefas completas.`);
+    if (tasks.length < MIN_TASKS) {
+      throw new Error(`Preencha no mínimo ${MIN_TASKS} tarefas completas.`);
     }
 
-    if (!BASE) {
-      throw new Error("WORKER_BASE_URL está vazio. Configure a URL no app.js.");
-    }
+    const { base } = getApiUrls();
+    if (!base) throw new Error("WORKER_BASE_URL está vazio. Configure a URL do seu Worker no app.js.");
 
-    return {
-      name,
-      method: state.selectedMethod,
-      tasks,
-    };
+    return { name, method: selectedMethod, tasks };
   }
 
-  // =========================
-  // HTTP
-  // =========================
-  async function postJson(url, payload, timeoutMs = 25000) {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
+  async function processPriorizai() {
+    showLoading("Processando com IA...");
+    setBusy(true);
 
     try {
-      const response = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-        signal: controller.signal,
-      });
-
-      const raw = await response.text();
-      let data = null;
-
-      try {
-        data = raw ? JSON.parse(raw) : null;
-      } catch {
-        data = null;
-      }
-
-      if (!response.ok) {
-        const message = data?.error || data?.message || raw || `Falha HTTP ${response.status}`;
-        throw new Error(message);
-      }
-
-      return data;
+      const payload = collectPriorizaiPayload();
+      const { prioritize } = getApiUrls();
+      const data = await callWorkerJson(prioritize, payload);
+      displayPriorizaiResults(data);
     } catch (err) {
-      if (err?.name === "AbortError") {
-        throw new Error("Tempo de resposta excedido. Tente novamente.");
-      }
-      throw err;
+      showError(err?.message || String(err));
     } finally {
-      clearTimeout(timer);
+      setBusy(false);
     }
   }
 
-  // =========================
-  // PriorizAI
-  // =========================
-  function renderPrioritizeResult(result) {
-    const container = byId("resultsContainer");
-    if (!container) return;
-    container.innerHTML = "";
-
-    const header = document.createElement("div");
-    header.className = "result-header";
-
-    const title = document.createElement("div");
-    title.className = "result-message";
-    title.textContent = String(result?.friendly_message || "Pronto. Aqui vai sua ordem.");
-
-    const summary = document.createElement("div");
-    summary.className = "result-summary";
-    summary.textContent = String(result?.summary || "");
-
-    const stat = document.createElement("div");
-    stat.className = "result-summary";
-    stat.textContent = `Tempo economizado (estimado): ${safeNumber(result?.estimated_time_saved_percent, 0)}%`;
-
-    header.appendChild(title);
-    if (summary.textContent) header.appendChild(summary);
-    header.appendChild(stat);
-    container.appendChild(header);
-
-    const ordered = Array.isArray(result?.ordered_tasks) ? result.ordered_tasks : [];
-    const list = document.createElement("div");
-    list.className = "ranked-list";
-
-    ordered.forEach((task) => {
-      const card = document.createElement("div");
-      card.className = "ranked-item";
-
-      const top = document.createElement("div");
-      top.className = "ranked-header";
-
-      const num = document.createElement("div");
-      num.className = "rank-number";
-      num.textContent = String(task?.position ?? "");
-
-      const ttl = document.createElement("div");
-      ttl.className = "rank-title";
-      ttl.textContent = String(task?.task_title || "");
-
-      top.appendChild(num);
-      top.appendChild(ttl);
-
-      const exp = document.createElement("div");
-      exp.className = "rank-explanation";
-      exp.textContent = String(task?.explanation || "");
-
-      card.appendChild(top);
-      card.appendChild(exp);
-
-      const points = Array.isArray(task?.key_points) ? task.key_points : [];
-      if (points.length) {
-        const ul = document.createElement("ul");
-        ul.className = "key-points";
-        points.forEach((p) => {
-          const li = document.createElement("li");
-          li.textContent = String(p);
-          ul.appendChild(li);
-        });
-        card.appendChild(ul);
-      }
-
-      const tipText = cleanText(task?.tip);
-      if (tipText) {
-        const tip = document.createElement("div");
-        tip.className = "rank-tip";
-        tip.textContent = tipText;
-        card.appendChild(tip);
-      }
-
-      list.appendChild(card);
-    });
-
-    container.appendChild(list);
-  }
-
-  async function handlePrioritizeClick() {
-    if (state.pending.prioritize) return;
-
-    const container = byId("resultsContainer");
-    if (!container) return;
-
-    scrollToTop();
-    renderLoading(container, "Priorizando a ordem...");
-    setBusy("prioritizeBtn", "prioritize", "⏳ Priorizando...", "✨ Priorizar com IA");
+  async function processCalmai() {
+    showLoading("Processando com IA...");
+    setBusy(true);
 
     try {
-      const payload = collectPrioritizePayload();
-      const data = await postJson(ENDPOINTS.prioritize, payload);
-      renderPrioritizeResult(data || {});
+      const name = requireSafeText("Seu nome", $("calmaiUserName")?.value, { required: true, min: 2, max: 60 });
+      const text = requireSafeText("Texto", $("calmaiText")?.value, { required: true, min: 10, max: 500 });
+
+      const { calmai } = getApiUrls();
+      const data = await callWorkerJson(calmai, { name, text });
+      displayCalmaiResults(data);
     } catch (err) {
-      renderError(container, err?.message || String(err));
+      showError(err?.message || String(err));
     } finally {
-      setBusy("prioritizeBtn", "prioritize", "⏳ Priorizando...", "✨ Priorizar com IA");
+      setBusy(false);
     }
   }
 
-  // =========================
-  // CalmAI
-  // =========================
-  function updateCalmCount() {
-    const input = byId("calmText");
-    const count = byId("calmCount");
-    if (!input || !count) return;
-    count.textContent = String((input.value || "").length);
-  }
-
-  function renderCalmResult(reply) {
-    const container = byId("calmResultsContainer");
-    if (!container) return;
-    container.innerHTML = "";
-
-    const header = document.createElement("div");
-    header.className = "result-header";
-
-    const title = document.createElement("div");
-    title.className = "result-message";
-    title.textContent = "A Diva do Caos respondeu.";
-
-    const body = document.createElement("div");
-    body.className = "result-summary";
-    body.textContent = String(reply || "");
-
-    header.appendChild(title);
-    header.appendChild(body);
-    container.appendChild(header);
-  }
-
-  async function handleCalmClick() {
-    if (state.pending.calm) return;
-
-    const container = byId("calmResultsContainer");
-    if (!container) return;
-
-    scrollToTop();
-    renderLoading(container, "A Diva está pensando...");
-    setBusy("calmBtn", "calm", "⏳ Pensando...", "💅 Pedir conselho para a Diva");
+  async function processBriefai() {
+    showLoading("Gerando o brief...");
+    setBusy(true);
 
     try {
-      const name = requireSafeText("Seu nome", byId("calmName")?.value, {
-        required: true,
-        min: 2,
-        max: 60,
-      });
+      const name = requireSafeText("Seu nome", $("briefaiUserName")?.value, { required: true, min: 2, max: 60 });
+      const text = requireSafeText("Seu texto", $("briefaiText")?.value, { required: true, min: 20, max: 1500 });
 
-      const text = requireSafeText("Conta seu problema", byId("calmText")?.value, {
-        required: true,
-        min: 10,
-        max: LIMITS.calmMax,
-      });
-
-      if (!BASE) throw new Error("WORKER_BASE_URL está vazio. Configure a URL no app.js.");
-
-      const data = await postJson(ENDPOINTS.calmai, { name, text });
-      renderCalmResult(data?.reply || "Sem resposta.");
+      const { briefai } = getApiUrls();
+      const data = await callWorkerJson(briefai, { name, text });
+      displayBriefaiResults(data);
     } catch (err) {
-      renderError(container, err?.message || String(err));
+      showError(err?.message || String(err));
     } finally {
-      setBusy("calmBtn", "calm", "⏳ Pensando...", "💅 Pedir conselho para a Diva");
+      setBusy(false);
     }
   }
 
-  // =========================
-  // BriefAI
-  // =========================
-  function updateBriefCount() {
-    const input = byId("briefText");
-    const count = byId("briefCount");
-    if (!input || !count) return;
-    count.textContent = String((input.value || "").length);
+  async function onProcessClick() {
+    if (currentModule === "priorizai") return processPriorizai();
+    if (currentModule === "calmai") return processCalmai();
+    if (currentModule === "briefai") return processBriefai();
   }
 
-  function renderBriefResult(data) {
-    const container = byId("briefResultsContainer");
-    if (!container) return;
-    container.innerHTML = "";
-
-    const header = document.createElement("div");
-    header.className = "result-header";
-
-    const title = document.createElement("div");
-    title.className = "result-message";
-    title.textContent = String(data?.friendlyMessage || "Pronto. Aqui está.");
-
-    const summary = document.createElement("div");
-    summary.className = "result-summary";
-    summary.textContent = String(data?.summary || "");
-
-    header.appendChild(title);
-    header.appendChild(summary);
-    container.appendChild(header);
-
-    // Brief
-    const briefBox = document.createElement("div");
-    briefBox.className = "result-block";
-
-    const briefTitle = document.createElement("div");
-    briefTitle.className = "result-block-title";
-    briefTitle.textContent = "Brief";
-
-    const briefText = document.createElement("div");
-    briefText.className = "result-summary";
-    briefText.textContent = String(data?.brief || "");
-
-    briefBox.appendChild(briefTitle);
-    briefBox.appendChild(briefText);
-    container.appendChild(briefBox);
-
-    // Missing info
-    const missingBox = document.createElement("div");
-    missingBox.className = "result-block";
-
-    const missingTitle = document.createElement("div");
-    missingTitle.className = "result-block-title";
-    missingTitle.textContent = "Pontos ausentes";
-
-    const missingList = document.createElement("ul");
-    missingList.className = "result-list";
-
-    const missing = Array.isArray(data?.missingInfo) ? data.missingInfo : [];
-    if (!missing.length) {
-      const li = document.createElement("li");
-      li.textContent = "Nada crítico apareceu como ausente no texto.";
-      missingList.appendChild(li);
-    } else {
-      missing.forEach((item) => {
-        const li = document.createElement("li");
-        li.textContent = String(item);
-        missingList.appendChild(li);
-      });
-    }
-
-    missingBox.appendChild(missingTitle);
-    missingBox.appendChild(missingList);
-    container.appendChild(missingBox);
-
-    // Next steps
-    const nextBox = document.createElement("div");
-    nextBox.className = "result-block";
-
-    const nextTitle = document.createElement("div");
-    nextTitle.className = "result-block-title";
-    nextTitle.textContent = "Próximos passos sugeridos";
-
-    const nextList = document.createElement("ul");
-    nextList.className = "result-list";
-
-    const next = Array.isArray(data?.nextSteps) ? data.nextSteps : [];
-    if (!next.length) {
-      const li = document.createElement("li");
-      li.textContent = "Sem sugestão automática agora. O texto ficou genérico demais.";
-      nextList.appendChild(li);
-    } else {
-      next.forEach((item) => {
-        const li = document.createElement("li");
-        li.textContent = String(item);
-        nextList.appendChild(li);
-      });
-    }
-
-    nextBox.appendChild(nextTitle);
-    nextBox.appendChild(nextList);
-    container.appendChild(nextBox);
-  }
-
-  async function handleBriefClick() {
-    if (state.pending.brief) return;
-
-    const container = byId("briefResultsContainer");
-    if (!container) return;
-
-    scrollToTop();
-    renderLoading(container, "Gerando o brief...");
-    setBusy("briefBtn", "brief", "⏳ Gerando...", "📝 Gerar BriefAI");
-
-    try {
-      const name = requireSafeText("Seu nome", byId("briefName")?.value, {
-        required: true,
-        min: 2,
-        max: 60,
-      });
-
-      const text = requireSafeText("Seu texto", byId("briefText")?.value, {
-        required: true,
-        min: 20,
-        max: LIMITS.briefMax,
-      });
-
-      if (!BASE) throw new Error("WORKER_BASE_URL está vazio. Configure a URL no app.js.");
-
-      const data = await postJson(ENDPOINTS.briefai, { name, text });
-      renderBriefResult(data || {});
-    } catch (err) {
-      renderError(container, err?.message || String(err));
-    } finally {
-      setBusy("briefBtn", "brief", "⏳ Gerando...", "📝 Gerar BriefAI");
-    }
-  }
-
-  // =========================
-  // Init
-  // =========================
-  function bindEvents() {
-    byId("addTaskBtn")?.addEventListener("click", addTask);
-    byId("prioritizeBtn")?.addEventListener("click", handlePrioritizeClick);
-
-    byId("calmText")?.addEventListener("input", updateCalmCount);
-    byId("calmBtn")?.addEventListener("click", handleCalmClick);
-
-    byId("briefText")?.addEventListener("input", updateBriefCount);
-    byId("briefBtn")?.addEventListener("click", handleBriefClick);
-  }
-
+  // ========= INIT =========
   function init() {
-    initTabs();
+    initModuleTabs();
     initMethodCards();
-    ensureInitialTasks();
-    bindEvents();
+    initializeTasks();
 
-    updateCalmCount();
-    updateBriefCount();
-    setActiveTab("priorizai");
+    $("addTaskBtn")?.addEventListener("click", addTask);
+    $("processBtn")?.addEventListener("click", onProcessClick);
+
+    // estado inicial
+    switchModule("priorizai");
   }
 
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", init);
-  } else {
-    init();
-  }
+  document.addEventListener("DOMContentLoaded", init);
 })();
