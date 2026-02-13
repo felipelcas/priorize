@@ -258,7 +258,7 @@
       box-shadow:0 0 0 3px var(--accent-glow);
     }
 
-    textarea{ resize:vertical; min-height:120px; }
+    textarea{ resize:vertical; min-height:140px; }
     input::placeholder, textarea::placeholder{ color:var(--text-muted); }
 
     .hint-text{
@@ -535,18 +535,30 @@
       white-space:pre-wrap;
     }
 
-    .result-stat{
-      display:inline-flex;
-      align-items:center;
-      gap:.5rem;
-      background:rgba(16,185,129,.1);
-      color:var(--success);
-      padding:.5rem 1rem;
-      border-radius:8px;
-      font-weight:800;
-      font-size:.875rem;
-      border:1px solid rgba(16,185,129,.2);
+    .result-block{
+      background:linear-gradient(135deg,rgba(26,26,26,.6),rgba(20,20,20,.6));
+      border-radius:16px;
+      padding:1.25rem;
+      border-left:4px solid var(--accent-primary);
+      box-shadow:0 4px 16px rgba(0,0,0,.3);
+      margin-bottom:1rem;
     }
+
+    .result-block-title{
+      font-weight:900;
+      margin-bottom:.75rem;
+      color:var(--text-primary);
+      font-family:'Outfit',sans-serif;
+      letter-spacing:.01em;
+    }
+
+    .result-list{
+      margin:0;
+      padding-left:1.2rem;
+      color:var(--text-secondary);
+    }
+
+    .result-list li{ margin-bottom:.4rem; }
 
     /* Ranked list */
     .ranked-list{ display:flex; flex-direction:column; gap:1rem; }
@@ -674,7 +686,7 @@
     <div class="tab-nav">
       <button class="tab-btn active" data-tab="priorizai"><span>PriorizAI</span></button>
       <button class="tab-btn" data-tab="calmai"><span>CalmAI</span></button>
-      <button class="tab-btn" disabled><span>Em breve 3</span></button>
+      <button class="tab-btn" data-tab="briefai"><span>BriefAI</span></button>
     </div>
 
     <!-- VIEW: PriorizAI -->
@@ -790,6 +802,44 @@
           <div class="result-empty">
             <div class="result-empty-icon">💬</div>
             <p>A resposta da Diva vai aparecer aqui.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- VIEW: BriefAI -->
+    <section id="viewBriefai" class="main-grid" style="display:none;">
+      <div class="card">
+        <h2 class="card-title">BriefAI</h2>
+
+        <p class="hint-text">
+          Cole um texto e eu transformo em resumo e brief de ação.
+          Não cole senhas, dados pessoais, dados de cliente ou informações internas sensíveis.
+        </p>
+
+        <div class="form-group">
+          <label>Seu nome <span class="required">*</span></label>
+          <input type="text" id="briefName" placeholder="Ex.: Felipe Castelão" required minlength="2" maxlength="60" />
+        </div>
+
+        <div class="form-group">
+          <label>Seu texto <span class="required">*</span></label>
+          <textarea id="briefText" maxlength="1500" placeholder="Cole aqui um e-mail, notícia ou pedido. Quanto mais claro, melhor."></textarea>
+          <div class="char-counter"><span id="briefCount">0</span>/1500</div>
+          <div class="hint-text">Cole aqui um e-mail, notícia ou pedido. Quanto mais claro, melhor.</div>
+        </div>
+
+        <button class="btn btn-primary btn-full" id="briefBtn">
+          <span>📝 Gerar BriefAI</span>
+        </button>
+      </div>
+
+      <div class="card">
+        <h2 class="card-title">Resultado</h2>
+        <div id="briefResultsContainer">
+          <div class="result-empty">
+            <div class="result-empty-icon">🧾</div>
+            <p>O resultado do BriefAI vai aparecer aqui.</p>
           </div>
         </div>
       </div>
