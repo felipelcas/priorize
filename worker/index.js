@@ -1,33 +1,33 @@
-/* worker/src/index.js - Cloudflare Worker (PriorizAI + CalmAI + BriefAI) */
+/* worker/src/index.js - Cloudflare Worker (API PriorizAI + CalmAI + BriefAI) */
 export default {
   async fetch(request, env) {
+    const url = new URL(request.url);
+
+    // CORS básico
+    if (request.method === "OPTIONS") {
+      return new Response(null, { status: 204, headers: corsHeaders() });
+    }
+
     try {
-      const url = new URL(request.url);
-
-      if (request.method === "OPTIONS") {
-        return new Response(null, { status: 204, headers: corsHeaders() });
-      }
-
       if (request.method === "GET" && url.pathname === "/") {
-        return json(
-          {
-            ok: true,
-            service: "priorizai-worker",
-            routes: ["POST /prioritize", "POST /calmai", "POST /briefai"],
-          },
-          200
-        );
+        return json({ ok: true, service: "priorizai-worker" }, 200);
       }
 
       if (request.method === "POST" && url.pathname === "/prioritize") {
+        const limited = await enforceDailyIpLimit(request, env);
+        if (limited) return limited;
         return await handlePrioritize(request, env);
       }
 
       if (request.method === "POST" && url.pathname === "/calmai") {
+        const limited = await enforceDailyIpLimit(request, env);
+        if (limited) return limited;
         return await handleCalmai(request, env);
       }
 
       if (request.method === "POST" && url.pathname === "/briefai") {
+        const limited = await enforceDailyIpLimit(request, env);
+        if (limited) return limited;
         return await handleBriefai(request, env);
       }
 
@@ -38,41 +38,99 @@ export default {
   },
 };
 
-// =========================
-// Infra
-// =========================
 function corsHeaders() {
   return {
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    "Access-Control-Allow-Headers": "Content-Type",
   };
 }
 
-function json(body, status = 200) {
-  return new Response(JSON.stringify(body), {
+function json(data, status = 200) {
+  return new Response(JSON.stringify(data), {
     status,
     headers: {
       ...corsHeaders(),
       "Content-Type": "application/json; charset=utf-8",
-      "Cache-Control": "no-store",
     },
   });
 }
 
-async function readJson(request) {
-  let payload = null;
-  try {
-    payload = await request.json();
-  } catch {
-    throw new Error("JSON inválido.");
+/**
+ * Rate limit: 3 usos por dia por IP (sem armazenar IP puro).
+ * Requer:
+ * - Durable Object binding: RATE_LIMITER
+ * - Secret/Var: IP_HASH_SALT (use "wrangler secret put IP_HASH_SALT")
+ * - Var opcional: IP_DAILY_LIMIT (default: 3)
+ */
+function getClientIp(request) {
+  // Cloudflare
+  const cf = request.headers.get("CF-Connecting-IP");
+  if (cf) return cf.trim();
+
+  // Fallback
+  const xff = request.headers.get("X-Forwarded-For");
+  if (xff) return xff.split(",")[0].trim();
+
+  return "";
+}
+
+async function sha256Hex(input) {
+  const data = new TextEncoder().encode(String(input));
+  const hash = await crypto.subtle.digest("SHA-256", data);
+  const bytes = new Uint8Array(hash);
+  return Array.from(bytes).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+function todayUtc() {
+  return new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+}
+
+async function enforceDailyIpLimit(request, env) {
+  const ip = getClientIp(request);
+  if (!ip) {
+    return json({ error: "Não consegui identificar o IP da requisição." }, 400);
   }
 
-  if (!payload || typeof payload !== "object") {
-    throw new Error("Body inválido.");
+  if (!env?.RATE_LIMITER) {
+    throw new Error("RATE_LIMITER não configurado no wrangler.toml (Durable Object binding).");
   }
 
-  return payload;
+  const salt = env?.IP_HASH_SALT;
+  if (!salt) {
+    throw new Error("IP_HASH_SALT não configurada no Worker (use Secrets/Vars).");
+  }
+
+  const limit = mustBeInt("IP_DAILY_LIMIT", env?.IP_DAILY_LIMIT ?? 3, { min: 1, max: 1000 });
+  const ipHash = await sha256Hex(`${salt}|${ip}`);
+  const shard = ipHash.slice(0, 2) || "00";
+
+  const id = env.RATE_LIMITER.idFromName(shard);
+  const stub = env.RATE_LIMITER.get(id);
+
+  const res = await stub.fetch("https://rate/check", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ipHash, day: todayUtc(), limit }),
+  });
+
+  if (res.status === 429) {
+    return json(
+      {
+        error: "Limite diário por IP atingido. Tente novamente amanhã.",
+        code: "RATE_LIMITED",
+        limit,
+      },
+      429
+    );
+  }
+
+  if (!res.ok) {
+    const txt = await res.text().catch(() => "");
+    throw new Error(txt || "Falha ao validar limite por IP.");
+  }
+
+  return null;
 }
 
 function cleanText(text) {
@@ -82,9 +140,11 @@ function cleanText(text) {
 function looksLikeInjection(text) {
   const t = cleanText(text).toLowerCase();
 
+  // XSS comuns
   const xss = ["<script", "</script", "<iframe", "<object", "<embed", "<svg", "javascript:", "onerror=", "onload="];
   if (xss.some((p) => t.includes(p))) return true;
 
+  // SQLi (heurística)
   const sqli = [
     " union select",
     "drop table",
@@ -93,224 +153,193 @@ function looksLikeInjection(text) {
     "update ",
     " or 1=1",
     "' or '1'='1",
-    '" or "1"="1',
+    "\" or \"1\"=\"1",
     "--",
     "/*",
     "*/",
   ];
+  if (sqli.some((p) => t.includes(p))) return true;
 
-  return sqli.some((p) => t.includes(p));
+  return false;
 }
 
-function mustBeString(name, value, { required = false, min = 0, max = 9999 } = {}) {
-  const v = cleanText(value);
+function mustBeString(name, val, { required = false, min = 0, max = 999999 } = {}) {
+  const v = cleanText(val);
 
   if (required && !v) throw new Error(`Preencha: ${name}.`);
   if (!required && !v) return "";
 
-  if (v.length < min) throw new Error(`${name} muito curto.`);
+  if (v.length < min) throw new Error(`${name} está muito curto.`);
   if (v.length > max) throw new Error(`${name} passou do limite de caracteres.`);
-  if (looksLikeInjection(v)) throw new Error(`${name} parece ter conteúdo perigoso.`);
 
+  if (looksLikeInjection(v)) {
+    throw new Error(`${name} parece ter conteúdo perigoso. Ajuste o texto e tente de novo.`);
+  }
   return v;
 }
 
-function mustBeInt(name, value, { min = 0, max = 999999 } = {}) {
-  const n = Number(value);
-  if (!Number.isInteger(n)) throw new Error(`${name} inválido.`);
-  if (n < min || n > max) throw new Error(`${name} fora do intervalo.`);
+function mustBeInt(name, val, { min = 0, max = 999999 } = {}) {
+  const n = Number(val);
+  if (!Number.isFinite(n) || !Number.isInteger(n)) throw new Error(`${name} deve ser um inteiro.`);
+  if (n < min) throw new Error(`${name} deve ser >= ${min}.`);
+  if (n > max) throw new Error(`${name} deve ser <= ${max}.`);
   return n;
+}
+
+async function readJson(request) {
+  const contentType = request.headers.get("Content-Type") || "";
+  if (!contentType.includes("application/json")) {
+    throw new Error("Content-Type deve ser application/json.");
+  }
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    throw new Error("JSON inválido.");
+  }
+  if (!body || typeof body !== "object") throw new Error("Body inválido.");
+  return body;
 }
 
 function requireOpenAIKey(env) {
   const key = env?.OPENAI_API_KEY;
-  if (!key) throw new Error("OPENAI_API_KEY não configurada no Worker.");
+  if (!key) throw new Error("OPENAI_API_KEY não configurada no Worker (Secrets/Vars).");
   return key;
 }
 
 async function openaiChat(env, payload) {
-  const apiKey = requireOpenAIKey(env);
+  const key = requireOpenAIKey(env);
 
   const res = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${apiKey}`,
+      Authorization: `Bearer ${key}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify(payload),
   });
 
-  const data = await res.json().catch(() => null);
+  const text = await res.text();
+  let data = null;
+
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch {
+    // ignore
+  }
 
   if (!res.ok) {
-    const msg = data?.error?.message || "Erro na chamada da OpenAI.";
+    const msg = (data && (data.error?.message || data.message)) || text || "Erro na OpenAI.";
     throw new Error(msg);
   }
 
-  return data;
+  return data || {};
 }
 
-function removeQuestionMarksDeep(value) {
-  const strip = (s) => cleanText(String(s || "")).replace(/\?/g, "").replace(/[\s]+$/g, "").trim();
-
-  if (typeof value === "string") return strip(value);
-  if (Array.isArray(value)) return value.map((item) => removeQuestionMarksDeep(item));
-
+function stripQuestionMarksDeep(value) {
+  if (typeof value === "string") {
+    return value.replaceAll("?", "").replaceAll("¿", "");
+  }
+  if (Array.isArray(value)) {
+    return value.map(stripQuestionMarksDeep);
+  }
   if (value && typeof value === "object") {
     const out = {};
-    for (const key of Object.keys(value)) {
-      out[key] = removeQuestionMarksDeep(value[key]);
+    for (const [k, v] of Object.entries(value)) {
+      out[k] = stripQuestionMarksDeep(v);
     }
     return out;
   }
-
   return value;
 }
 
-// =========================
-// /prioritize
-// =========================
 async function handlePrioritize(request, env) {
   const body = await readJson(request);
 
   const name = mustBeString("Seu nome", body.name, { required: true, min: 2, max: 60 });
-  const method = mustBeString("Método", body.method, { required: true, min: 3, max: 40 });
+  const method = mustBeString("Método", body.method, { required: true, min: 2, max: 40 });
 
-  if (method !== "impact_effort") {
-    return json({ error: "Por enquanto, só o método Impacto e Esforço está liberado." }, 400);
-  }
+  const tasks = body.tasks;
+  if (!Array.isArray(tasks)) throw new Error("tasks deve ser uma lista.");
+  if (tasks.length < 3) throw new Error("Preencha no mínimo 3 tarefas completas.");
+  if (tasks.length > 10) throw new Error("Máximo de 10 tarefas.");
 
-  if (!Array.isArray(body.tasks)) {
-    return json({ error: "tasks deve ser uma lista." }, 400);
-  }
+  const normalizedTasks = tasks.map((t, idx) => {
+    const title = mustBeString(`Tarefa ${idx + 1} - título`, t?.title, { required: true, min: 3, max: 80 });
+    const description = mustBeString(`Tarefa ${idx + 1} - descrição`, t?.description, { required: true, min: 10, max: 800 });
 
-  const tasksRaw = body.tasks.slice(0, 10);
-  if (tasksRaw.length < 3) {
-    return json({ error: "Envie no mínimo 3 tarefas." }, 400);
-  }
+    const importance = mustBeInt(`Tarefa ${idx + 1} - importância`, t?.importance, { min: 1, max: 5 });
+    const time_cost = mustBeInt(`Tarefa ${idx + 1} - tempo`, t?.time_cost, { min: 1, max: 5 });
 
-  const tasks = tasksRaw.map((task, idx) => {
-    const title = mustBeString(`Tarefa ${idx + 1} - título`, task.title, {
-      required: true,
-      min: 3,
-      max: 80,
-    });
+    const importance_label = mustBeString(`Tarefa ${idx + 1} - importância_label`, t?.importance_label, { required: false, min: 0, max: 50 });
+    const time_label = mustBeString(`Tarefa ${idx + 1} - time_label`, t?.time_label, { required: false, min: 0, max: 50 });
 
-    const description = mustBeString(`Tarefa ${idx + 1} - descrição`, task.description, {
-      required: true,
-      min: 10,
-      max: 800,
-    });
-
-    const importance = mustBeInt(`Tarefa ${idx + 1} - importância`, task.importance, { min: 1, max: 5 });
-    const time_cost = mustBeInt(`Tarefa ${idx + 1} - tempo`, task.time_cost, { min: 1, max: 5 });
-
-    const importance_label = mustBeString(`Tarefa ${idx + 1} - rótulo importância`, task.importance_label, {
-      required: true,
-      min: 2,
-      max: 60,
-    });
-
-    const time_label = mustBeString(`Tarefa ${idx + 1} - rótulo tempo`, task.time_label, {
-      required: true,
-      min: 2,
-      max: 60,
-    });
-
-    return { title, description, importance, time_cost, importance_label, time_label };
+    return {
+      title,
+      description,
+      importance,
+      time_cost,
+      importance_label,
+      time_label,
+    };
   });
 
   const model = env?.OPENAI_MODEL || "gpt-4o-mini";
 
-  const system = [
-    "Você é o PriorizAI.",
-    "Linguagem simples, direta e útil.",
-    "Use o nome do usuário.",
-    "Analise título, descrição, importância e tempo.",
-    "Se houver incoerência entre nota e descrição, ajuste a análise com cuidado.",
-    "Não invente fatos externos.",
-    "Retorne somente JSON válido no schema enviado.",
-  ].join(" ");
+  const sys = [
+    "Você é um assistente que prioriza tarefas de forma profissional e objetiva.",
+    "Responda SEM interrogação. Não use '?' nem '¿'.",
+    "Responda sempre em português do Brasil.",
+    "Retorne estritamente um JSON válido no formato abaixo.",
+    "Formato esperado:",
+    "{",
+    '  "friendly_message": "string",',
+    '  "summary": "string",',
+    '  "estimated_time_saved_percent": number,',
+    '  "ordered_tasks": [',
+    "    {",
+    '      "position": "1",',
+    '      "task_title": "string",',
+    '      "explanation": "string",',
+    '      "key_points": ["string", "string"],',
+    '      "tip": "string"',
+    "    }",
+    "  ]",
+    "}",
+  ].join("\n");
 
-  const schema = {
-    name: "PriorizeResult",
-    schema: {
-      type: "object",
-      additionalProperties: false,
-      required: ["friendly_message", "method_used", "estimated_time_saved_percent", "summary", "ordered_tasks"],
-      properties: {
-        friendly_message: { type: "string" },
-        method_used: { type: "string" },
-        estimated_time_saved_percent: { type: "integer", minimum: 0, maximum: 80 },
-        summary: { type: "string" },
-        ordered_tasks: {
-          type: "array",
-          minItems: 3,
-          items: {
-            type: "object",
-            additionalProperties: false,
-            required: ["position", "task_title", "explanation", "key_points", "tip"],
-            properties: {
-              position: { type: "integer", minimum: 1, maximum: 10 },
-              task_title: { type: "string" },
-              explanation: { type: "string" },
-              key_points: {
-                type: "array",
-                minItems: 2,
-                maxItems: 4,
-                items: { type: "string" },
-              },
-              tip: { type: "string" },
-            },
-          },
-        },
-      },
-    },
-  };
-
-  const user = {
+  const usr = {
     name,
     method,
-    rules: [
-      "Priorize por impacto e esforço.",
-      "Quanto mais importante e mais rápido, maior prioridade.",
-      "Urgência na descrição pesa na decisão.",
-      "Explique de forma simples.",
-    ],
-    tasks,
+    tasks: normalizedTasks,
   };
 
-  const payload = {
+  const out = await openaiChat(env, {
     model,
-    temperature: 0.6,
+    temperature: 0.4,
     messages: [
-      { role: "system", content: system },
-      { role: "user", content: JSON.stringify(user) },
+      { role: "system", content: sys },
+      { role: "user", content: JSON.stringify(usr) },
     ],
-    response_format: {
-      type: "json_schema",
-      json_schema: schema,
-    },
-  };
+    response_format: { type: "json_object" },
+  });
 
-  const out = await openaiChat(env, payload);
   const content = out?.choices?.[0]?.message?.content;
-
   if (!content) throw new Error("Resposta vazia da OpenAI.");
 
   let parsed;
   try {
     parsed = JSON.parse(content);
   } catch {
-    throw new Error("Não foi possível interpretar o JSON retornado.");
+    throw new Error("Não consegui ler a resposta da IA em JSON.");
   }
+
+  // Enforce: sem interrogação
+  parsed = stripQuestionMarksDeep(parsed);
 
   return json(parsed, 200);
 }
 
-// =========================
-// /calmai
-// =========================
 async function handleCalmai(request, env) {
   const body = await readJson(request);
 
@@ -319,36 +348,31 @@ async function handleCalmai(request, env) {
 
   const model = env?.OPENAI_MODEL || "gpt-4o-mini";
 
-  const system = [
-    "Você é a Diva do Caos.",
-    "Tom divertido, direto e inteligente.",
-    "Entregue conselho útil com uma pitada de humor.",
-    "Não invente fatos.",
-    "Termine com uma pergunta curta e provocante.",
+  const diva = [
+    "Você é a Diva do Caos, uma conselheira provocadora, amiga debochada e mentora perspicaz.",
+    "Fala de forma informal, cheia de gírias, provoca e cutuca os usuários, alternando entre carinho e ironia.",
+    "Sempre provoca os usuários.",
+    "Seja concisa.",
+    "Dê um conselho engraçado, inteligente, provocador e reflexivo.",
+    "NÃO invente fatos. Use só o que o usuário contou.",
+    "SEMPRE termine com UMA pergunta provocante e direta.",
   ].join(" ");
 
-  const prompt = `Nome: ${name}\nProblema: ${text}`;
-
-  const payload = {
+  const out = await openaiChat(env, {
     model,
-    temperature: 0.9,
+    temperature: 0.8,
     messages: [
-      { role: "system", content: system },
-      { role: "user", content: prompt },
+      { role: "system", content: diva },
+      { role: "user", content: `Nome: ${name}\n\nTexto: ${text}` },
     ],
-  };
+  });
 
-  const out = await openaiChat(env, payload);
-  const reply = cleanText(out?.choices?.[0]?.message?.content);
+  const content = out?.choices?.[0]?.message?.content;
+  if (!content) throw new Error("Resposta vazia da OpenAI.");
 
-  if (!reply) throw new Error("Resposta vazia da OpenAI.");
-
-  return json({ reply }, 200);
+  return json({ reply: content }, 200);
 }
 
-// =========================
-// /briefai
-// =========================
 async function handleBriefai(request, env) {
   const body = await readJson(request);
 
@@ -357,78 +381,110 @@ async function handleBriefai(request, env) {
 
   const model = env?.OPENAI_MODEL || "gpt-4o-mini";
 
-  const system = [
-    "Você é o BriefAI.",
-    "Use linguagem simples, direta e objetiva.",
-    "Não use perguntas e não use ponto de interrogação.",
-    "Não invente fatos externos.",
-    "Retorne somente JSON no schema definido.",
-  ].join(" ");
+  const sys = [
+    "Você é um analista que transforma texto bagunçado em briefing estruturado e objetivo.",
+    "Responda SEM interrogação. Não use '?' nem '¿'.",
+    "Responda sempre em português do Brasil.",
+    "Retorne estritamente um JSON válido no formato abaixo.",
+    "Formato esperado:",
+    "{",
+    '  "friendlyMessage": "string",',
+    '  "summary": "string",',
+    '  "brief": "string",',
+    '  "missingInfo": ["string"],',
+    '  "nextSteps": ["string"]',
+    "}",
+  ].join("\n");
 
-  const schema = {
-    name: "BriefAIResponse",
-    schema: {
-      type: "object",
-      additionalProperties: false,
-      required: ["friendlyMessage", "summary", "brief", "missingInfo", "nextSteps"],
-      properties: {
-        friendlyMessage: { type: "string" },
-        summary: { type: "string" },
-        brief: { type: "string" },
-        missingInfo: {
-          type: "array",
-          minItems: 0,
-          maxItems: 10,
-          items: { type: "string" },
-        },
-        nextSteps: {
-          type: "array",
-          minItems: 0,
-          maxItems: 10,
-          items: { type: "string" },
-        },
-      },
-    },
-  };
-
-  const user = {
+  const usr = {
     name,
     text,
-    output_rules: [
-      "friendlyMessage com 1 a 2 frases.",
-      "summary em 4 a 7 linhas curtas.",
-      "brief com blocos: Contexto, Objetivo, O que está acontecendo, Restrições e riscos, Plano de ação curto.",
-      "missingInfo sem perguntas.",
-      "nextSteps sem perguntas.",
-    ],
   };
 
-  const payload = {
+  const out = await openaiChat(env, {
     model,
-    temperature: 0.5,
+    temperature: 0.4,
     messages: [
-      { role: "system", content: system },
-      { role: "user", content: JSON.stringify(user) },
+      { role: "system", content: sys },
+      { role: "user", content: JSON.stringify(usr) },
     ],
-    response_format: {
-      type: "json_schema",
-      json_schema: schema,
-    },
-  };
+    response_format: { type: "json_object" },
+  });
 
-  const out = await openaiChat(env, payload);
   const content = out?.choices?.[0]?.message?.content;
-
   if (!content) throw new Error("Resposta vazia da OpenAI.");
 
   let parsed;
   try {
     parsed = JSON.parse(content);
   } catch {
-    throw new Error("Não foi possível interpretar o JSON retornado.");
+    throw new Error("Não consegui ler a resposta da IA em JSON.");
   }
 
-  parsed = removeQuestionMarksDeep(parsed);
+  // Enforce: sem interrogação
+  parsed = stripQuestionMarksDeep(parsed);
 
   return json(parsed, 200);
+}
+
+/**
+ * Durable Object: RateLimiter
+ * Armazena somente um hash do IP (não armazena IP puro).
+ * Estrutura por ipHash: { day: "YYYY-MM-DD", count: number }
+ */
+export class RateLimiter {
+  constructor(state, env) {
+    this.state = state;
+    this.env = env;
+  }
+
+  async fetch(request) {
+    if (request.method === "OPTIONS") {
+      return new Response(null, { status: 204 });
+    }
+
+    if (request.method !== "POST") {
+      return new Response("Method Not Allowed", { status: 405 });
+    }
+
+    let body;
+    try {
+      body = await request.json();
+    } catch {
+      return this.jsonResponse({ error: "JSON inválido." }, 400);
+    }
+
+    const ipHash = String(body?.ipHash || "").trim();
+    const day = String(body?.day || "").trim();
+    const limit = Number(body?.limit);
+
+    if (!ipHash || !day || !Number.isFinite(limit)) {
+      return this.jsonResponse({ error: "Body inválido." }, 400);
+    }
+
+    const key = ipHash;
+
+    const current = await this.state.storage.get(key);
+    let count = 0;
+
+    if (current && current.day === day && Number.isFinite(current.count)) {
+      count = current.count;
+    }
+
+    if (count >= limit) {
+      return this.jsonResponse({ allowed: false, limit, remaining: 0 }, 429);
+    }
+
+    count += 1;
+    await this.state.storage.put(key, { day, count });
+
+    return this.jsonResponse({ allowed: true, limit, remaining: Math.max(0, limit - count) }, 200);
+  }
+
+  jsonResponse(data, status = 200) {
+    return new Response(JSON.stringify(data), {
+      status,
+      headers: { "Content-Type": "application/json; charset=utf-8" },
+    });
+  }
 }
