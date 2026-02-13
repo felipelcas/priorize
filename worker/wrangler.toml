@@ -3,9 +3,6 @@ main = "index.js"
 compatibility_date = "2026-02-12"
 preview_urls = true
 
-# Opcional: se você for usar Wrangler/GitHub Actions para deploy.
-# Se você fizer o binding pelo Dashboard, pode ignorar esta parte.
-# Pegue o ID da KV Namespace no Cloudflare Dashboard.
 [[kv_namespaces]]
 binding = "RATE_LIMIT_KV"
 id = "4cf4b8ee186f4951a69a536b429c6943"
