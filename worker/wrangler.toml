@@ -4,6 +4,6 @@ compatibility_date = "2026-02-12"
 preview_urls = true
 
 [[kv_namespaces]]
-binding = "RATE_LIMIT_KV"
+binding = "env.RATE_LIMIT_KV"
 id = "4cf4b8ee186f4951a69a536b429c6943"
 preview_id = "9ddad3d8a3fd4658831c2d0fa65617a6"
