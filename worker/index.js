@@ -13,9 +13,10 @@ export default {
         return json({ ok: true, service: "priorizai-worker" }, 200);
       }
 
-      // Rate limit por IP: 3 usos por dia (America/Sao_Paulo)
+      // Rate limit por IP: IP_DAILY_LIMIT usos por dia (America/Sao_Paulo)
       if (request.method === "POST" && isLimitedPath(url.pathname)) {
-        const blocked = await enforceDailyRateLimit(request, env, 3);
+        const limit = getDailyLimit(env);
+        const blocked = await enforceDailyRateLimit(request, env, limit);
         if (blocked) return blocked;
       }
 
@@ -72,6 +73,15 @@ export default {
 
 function isLimitedPath(pathname) {
   return pathname === "/prioritize" || pathname === "/calmai" || pathname === "/briefai";
+}
+
+function getDailyLimit(env) {
+  // Lê do painel: Variables (não secret)
+  // Aceita string ou número. Fallback: 3.
+  const raw = env?.IP_DAILY_LIMIT;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || !Number.isInteger(n) || n < 1) return 3;
+  return n;
 }
 
 function getClientIp(request) {
