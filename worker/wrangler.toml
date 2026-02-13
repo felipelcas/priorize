@@ -8,5 +8,5 @@ preview_urls = true
 # Pegue o ID da KV Namespace no Cloudflare Dashboard.
 [[kv_namespaces]]
 binding = "RATE_LIMIT_KV"
-id = "COLE_AQUI_O_ID_DA_KV_NAMESPACE"
-preview_id = "COLE_AQUI_O_ID_DA_KV_PREVIEW"
+id = "4cf4b8ee186f4951a69a536b429c6943"
+preview_id = "9ddad3d8a3fd4658831c2d0fa65617a6"
