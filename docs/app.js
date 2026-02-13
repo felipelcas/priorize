@@ -1,4 +1,4 @@
-/* app.js - PriorizAI + CalmAI (GitHub Pages) */
+/* app.js - PriorizAI + CalmAI + BriefAI (GitHub Pages) */
 (() => {
   "use strict";
 
@@ -40,11 +40,12 @@
   const BASE = normalizeBaseUrl(WORKER_BASE_URL);
   const API_PRIORITIZE = `${BASE}/prioritize`;
   const API_CALMAI = `${BASE}/calmai`;
+  const API_BRIEFAI = `${BASE}/briefai`;
 
   function looksLikeInjection(text) {
     const t = String(text || "").toLowerCase();
 
-    // Bloqueios de XSS comuns
+    // XSS comuns
     const xss = [
       "<script",
       "</script",
@@ -58,7 +59,7 @@
     ];
     if (xss.some((p) => t.includes(p))) return true;
 
-    // Heurística para SQLi (evita falso positivo excessivo)
+    // SQLi (heurística)
     const sqli = [
       " union select",
       "drop table",
@@ -71,7 +72,6 @@
       "--",
       "/*",
       "*/",
-      ";--",
     ];
     if (sqli.some((p) => t.includes(p))) return true;
 
@@ -106,16 +106,17 @@
       btn.classList.toggle("active", btn.dataset.tab === tab);
     });
 
-    const viewPriorizai = $("viewPriorizai");
-    const viewCalmai = $("viewCalmai");
+    const views = {
+      priorizai: $("viewPriorizai"),
+      calmai: $("viewCalmai"),
+      briefai: $("viewBriefai"),
+    };
 
-    if (tab === "calmai") {
-      viewPriorizai.style.display = "none";
-      viewCalmai.style.display = "grid";
-    } else {
-      viewCalmai.style.display = "none";
-      viewPriorizai.style.display = "grid";
-    }
+    Object.keys(views).forEach((k) => {
+      if (!views[k]) return;
+      views[k].style.display = k === tab ? "grid" : "none";
+    });
+
     scrollToTop();
   }
 
@@ -332,7 +333,6 @@
       const titleRaw = cleanText(titleEl.value);
       const descRaw = cleanText(descEl.value);
 
-      // tarefa vazia pode existir. Só considera se tiver título OU descrição
       const isEmpty = !titleRaw && !descRaw;
       if (isEmpty) continue;
 
@@ -362,8 +362,8 @@
     return { name, method: selectedMethod, tasks };
   }
 
-  async function callWorkerPrioritize(payload) {
-    const res = await fetch(API_PRIORITIZE, {
+  async function callWorkerJson(url, payload) {
+    const res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
@@ -388,7 +388,6 @@
     const container = $("resultsContainer");
     container.innerHTML = "";
 
-    // Header
     const header = document.createElement("div");
     header.className = "result-header";
 
@@ -401,77 +400,16 @@
     summary.textContent = String(result.summary || "");
 
     const stat = document.createElement("div");
-    stat.className = "result-stat";
-    stat.textContent = `⏱️ Tempo economizado (estimado): ${Number(result.estimated_time_saved_percent ?? 0)}%`;
+    stat.className = "result-summary";
+    stat.textContent = `Tempo economizado (estimado): ${Number(result.estimated_time_saved_percent ?? 0)}%`;
 
     header.appendChild(msg);
     if (summary.textContent) header.appendChild(summary);
     header.appendChild(stat);
     container.appendChild(header);
 
-    // Table (ordem primeiro)
     const ordered = Array.isArray(result.ordered_tasks) ? result.ordered_tasks : [];
-    const tableWrap = document.createElement("div");
-    tableWrap.style.marginBottom = "1rem";
 
-    const table = document.createElement("table");
-    table.style.width = "100%";
-    table.style.borderCollapse = "collapse";
-    table.style.background = "rgba(0,0,0,.2)";
-    table.style.border = "1px solid rgba(212,165,116,.25)";
-    table.style.borderRadius = "12px";
-    table.style.overflow = "hidden";
-
-    const thead = document.createElement("thead");
-    const hr = document.createElement("tr");
-
-    const th1 = document.createElement("th");
-    th1.textContent = "Ordem";
-    th1.style.textAlign = "left";
-    th1.style.padding = "10px";
-    th1.style.borderBottom = "1px solid rgba(212,165,116,.25)";
-    th1.style.color = "var(--text-secondary)";
-
-    const th2 = document.createElement("th");
-    th2.textContent = "Tarefa";
-    th2.style.textAlign = "left";
-    th2.style.padding = "10px";
-    th2.style.borderBottom = "1px solid rgba(212,165,116,.25)";
-    th2.style.color = "var(--text-secondary)";
-
-    hr.appendChild(th1);
-    hr.appendChild(th2);
-    thead.appendChild(hr);
-    table.appendChild(thead);
-
-    const tbody = document.createElement("tbody");
-    ordered.forEach((it) => {
-      const tr = document.createElement("tr");
-
-      const td1 = document.createElement("td");
-      td1.textContent = String(it.position ?? "");
-      td1.style.padding = "10px";
-      td1.style.borderBottom = "1px solid rgba(212,165,116,.12)";
-      td1.style.color = "var(--text-primary)";
-      td1.style.fontWeight = "800";
-      td1.style.width = "90px";
-
-      const td2 = document.createElement("td");
-      td2.textContent = String(it.task_title ?? "");
-      td2.style.padding = "10px";
-      td2.style.borderBottom = "1px solid rgba(212,165,116,.12)";
-      td2.style.color = "var(--text-primary)";
-
-      tr.appendChild(td1);
-      tr.appendChild(td2);
-      tbody.appendChild(tr);
-    });
-    table.appendChild(tbody);
-
-    tableWrap.appendChild(table);
-    container.appendChild(tableWrap);
-
-    // Full text list
     const list = document.createElement("div");
     list.className = "ranked-list";
 
@@ -537,7 +475,7 @@
     }
 
     try {
-      const result = await callWorkerPrioritize(payload);
+      const result = await callWorkerJson(API_PRIORITIZE, payload);
       renderPriorizaiResults(result);
     } catch (err) {
       renderError(results, err.message || String(err));
@@ -550,28 +488,6 @@
     const count = $("calmCount");
     if (!text || !count) return;
     count.textContent = String((text.value || "").length);
-  }
-
-  async function callWorkerCalmai(payload) {
-    const res = await fetch(API_CALMAI, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-
-    const text = await res.text();
-    let data = null;
-    try {
-      data = text ? JSON.parse(text) : null;
-    } catch {
-      // nada
-    }
-
-    if (!res.ok) {
-      const msg = (data && (data.error || data.message)) || text || "Erro ao chamar o Worker.";
-      throw new Error(msg);
-    }
-    return data;
   }
 
   function renderCalmaiResult(reply) {
@@ -594,33 +510,143 @@
     container.appendChild(header);
   }
 
-async function onCalmClick() {
-  scrollToTop();
+  async function onCalmClick() {
+    scrollToTop();
 
-  const container = $("calmResultsContainer");
-  renderLoading(container, "A Diva está pensando...");
+    const container = $("calmResultsContainer");
+    renderLoading(container, "A Diva está pensando...");
 
-  try {
-    const name = requireSafeText("Seu nome", $("calmName").value, {
-      required: true,
-      min: 2,
-      max: 60,
-    });
+    try {
+      const name = requireSafeText("Seu nome", $("calmName").value, { required: true, min: 2, max: 60 });
+      const text = requireSafeText("Conta seu problema", $("calmText").value, { required: true, min: 10, max: 500 });
 
-    const text = requireSafeText("Conta seu problema", $("calmText").value, {
-      required: true,
-      min: 10,
-      max: 500,
-    });
+      if (!BASE) throw new Error("WORKER_BASE_URL está vazio. Configure a URL do seu Worker no app.js.");
 
-    if (!BASE) throw new Error("WORKER_BASE_URL está vazio. Configure a URL do seu Worker no app.js.");
-
-    const data = await callWorkerCalmai({ name, text });
-    renderCalmaiResult(data.reply);
-  } catch (err) {
-    renderError(container, err.message || String(err));
+      const data = await callWorkerJson(API_CALMAI, { name, text });
+      renderCalmaiResult(data.reply);
+    } catch (err) {
+      renderError(container, err.message || String(err));
+    }
   }
-}
+
+  // ========= BRIEFAI =========
+  function updateBriefCount() {
+    const text = $("briefText");
+    const count = $("briefCount");
+    if (!text || !count) return;
+    count.textContent = String((text.value || "").length);
+  }
+
+  function renderBriefaiResult(data) {
+    const container = $("briefResultsContainer");
+    container.innerHTML = "";
+
+    const header = document.createElement("div");
+    header.className = "result-header";
+
+    const msg = document.createElement("div");
+    msg.className = "result-message";
+    msg.textContent = String(data.friendlyMessage || "Pronto. Aqui está.");
+
+    const summary = document.createElement("div");
+    summary.className = "result-summary";
+    summary.textContent = String(data.summary || "");
+
+    header.appendChild(msg);
+    header.appendChild(summary);
+    container.appendChild(header);
+
+    // Brief
+    const briefBox = document.createElement("div");
+    briefBox.className = "result-block";
+
+    const briefTitle = document.createElement("div");
+    briefTitle.className = "result-block-title";
+    briefTitle.textContent = "Brief";
+
+    const briefText = document.createElement("div");
+    briefText.className = "result-summary";
+    briefText.textContent = String(data.brief || "");
+
+    briefBox.appendChild(briefTitle);
+    briefBox.appendChild(briefText);
+    container.appendChild(briefBox);
+
+    // Missing info
+    const missing = Array.isArray(data.missingInfo) ? data.missingInfo : [];
+    const missingBox = document.createElement("div");
+    missingBox.className = "result-block";
+
+    const missingTitle = document.createElement("div");
+    missingTitle.className = "result-block-title";
+    missingTitle.textContent = "Pontos ausentes";
+
+    const missingList = document.createElement("ul");
+    missingList.className = "result-list";
+
+    if (missing.length === 0) {
+      const li = document.createElement("li");
+      li.textContent = "Nada crítico apareceu como ausente no texto.";
+      missingList.appendChild(li);
+    } else {
+      missing.forEach((x) => {
+        const li = document.createElement("li");
+        li.textContent = String(x);
+        missingList.appendChild(li);
+      });
+    }
+
+    missingBox.appendChild(missingTitle);
+    missingBox.appendChild(missingList);
+    container.appendChild(missingBox);
+
+    // Next steps
+    const next = Array.isArray(data.nextSteps) ? data.nextSteps : [];
+    const nextBox = document.createElement("div");
+    nextBox.className = "result-block";
+
+    const nextTitle = document.createElement("div");
+    nextTitle.className = "result-block-title";
+    nextTitle.textContent = "Próximos passos sugeridos";
+
+    const nextList = document.createElement("ul");
+    nextList.className = "result-list";
+
+    if (next.length === 0) {
+      const li = document.createElement("li");
+      li.textContent = "Sem sugestão automática agora. O texto ficou genérico demais.";
+      nextList.appendChild(li);
+    } else {
+      next.forEach((x) => {
+        const li = document.createElement("li");
+        li.textContent = String(x);
+        nextList.appendChild(li);
+      });
+    }
+
+    nextBox.appendChild(nextTitle);
+    nextBox.appendChild(nextList);
+    container.appendChild(nextBox);
+  }
+
+  async function onBriefClick() {
+    scrollToTop();
+
+    const container = $("briefResultsContainer");
+    renderLoading(container, "Gerando o brief...");
+
+    try {
+      const name = requireSafeText("Seu nome", $("briefName").value, { required: true, min: 2, max: 60 });
+      const text = requireSafeText("Seu texto", $("briefText").value, { required: true, min: 20, max: 1500 });
+
+      if (!BASE) throw new Error("WORKER_BASE_URL está vazio. Configure a URL do seu Worker no app.js.");
+
+      const data = await callWorkerJson(API_BRIEFAI, { name, text });
+      renderBriefaiResult(data);
+    } catch (err) {
+      renderError(container, err.message || String(err));
+    }
+  }
 
   // ========= INIT =========
   function initTabs() {
@@ -639,12 +665,19 @@ async function onCalmClick() {
     ensureInitialTasks();
     updateTaskCounter();
 
-    $("addTaskBtn").addEventListener("click", () => addTask());
-    $("prioritizeBtn").addEventListener("click", () => onPrioritizeClick());
+    $("addTaskBtn")?.addEventListener("click", () => addTask());
+    $("prioritizeBtn")?.addEventListener("click", () => onPrioritizeClick());
 
-    $("calmText").addEventListener("input", updateCalmCount);
+    $("calmText")?.addEventListener("input", updateCalmCount);
     updateCalmCount();
-    $("calmBtn").addEventListener("click", () => onCalmClick());
+    $("calmBtn")?.addEventListener("click", () => onCalmClick());
+
+    $("briefText")?.addEventListener("input", updateBriefCount);
+    updateBriefCount();
+    $("briefBtn")?.addEventListener("click", () => onBriefClick());
+
+    // garante estado inicial
+    setActiveTab("priorizai");
   }
 
   document.addEventListener("DOMContentLoaded", init);
