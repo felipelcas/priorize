@@ -1,551 +1,356 @@
-/* ===== Priorizaí (novo layout) | app.js =====
-   - Mantém a navegação por módulos
-   - Botão "Gerar" fixo no final do formulário do módulo ativo
-   - Integra com o Worker via endpoints /prioritize, /calmai, /briefai
-*/
+// =========================
+// Config
+// =========================
+const WORKER_BASE_URL = "https://priorizai.felipelcas.workers.dev";
 
-(() => {
-  "use strict";
+const MODULE_ENDPOINTS = {
+  priorizai: "/prioritize",
+  calmai: "/calmai",
+  briefai: "/briefai",
+};
 
-  // ========= CONFIG =========
-  const WORKER_BASE_URL = "https://priorizai.felipelcas.workers.dev";
+const MODULE_DESCRIPTIONS = {
+  priorizai: "Liste suas tarefas. Eu retorno uma ordem de prioridade clara.",
+  calmai:
+    "A diva CalmAI reescreve sua mensagem com elegância, calma e objetividade. Você reduz atrito e ganha clareza para conversar com qualquer pessoa.",
+  briefai: "Cole um texto longo. Eu retorno um resumo executivo e bullets objetivos.",
+};
 
-  const MODULE_ENDPOINTS = {
-    prioritize: "/prioritize",
-    calmai: "/calmai",
-    briefai: "/briefai",
-  };
+const PROCESS_BUTTON_LABELS = {
+  priorizai: "Gerar priorização",
+  calmai: "Gerar mensagem calma",
+  briefai: "Gerar briefing",
+};
 
-  const MODULE_TITLES = {
-    prioritize: "PriorizAI",
-    calmai: "CalmAI",
-    briefai: "BriefAI",
-  };
+function updateProcessButtonLabel() {
+  const btn = document.getElementById("processBtn");
+  if (!btn) return;
+  btn.textContent = PROCESS_BUTTON_LABELS[currentModule] || "Gerar";
+}
 
-  const MODULE_DESCRIPTIONS = {
-    prioritize: "Organize e priorize tarefas com critérios simples e objetivo.",
-    calmai: "Reescreva mensagens para um tom mais calmo e assertivo.",
-    briefai: "Resuma textos longos em um formato executivo e direto.",
-  };
+// =========================
+// State
+// =========================
+let currentModule = "priorizai";
+let isBusy = false;
 
-  const PROCESS_BUTTON_LABELS = {
-    prioritize: "✨ Gerar priorização",
-    calmai: "✨ Gerar versão calma",
-    briefai: "✨ Gerar resumo",
-  };
+// =========================
+// Helpers
+// =========================
+function $(id) {
+  return document.getElementById(id);
+}
 
-  // ========= STATE =========
-  let currentModule = "prioritize";
-  let selectedMethod = "impact_effort";
+function escapeHtml(s) {
+  return String(s || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
 
-  // ========= UTILS =========
-  const $ = (id) => document.getElementById(id);
-
-  function escapeHtml(s) {
-    return String(s || "")
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;")
-      .replace(/'/g, "&#039;");
+function setBusy(busy) {
+  isBusy = busy;
+  const btn = $("processBtn");
+  if (btn) {
+    btn.disabled = busy;
+    btn.title = busy ? "Processando..." : (PROCESS_BUTTON_LABELS[currentModule] || "Gerar");
   }
+}
 
-  function safeTrim(s) {
-    return String(s || "").trim();
+function formatDateTimeBR(iso) {
+  try {
+    const d = new Date(iso);
+    return new Intl.DateTimeFormat("pt-BR", {
+      timeZone: "America/Sao_Paulo",
+      dateStyle: "short",
+      timeStyle: "short",
+    }).format(d);
+  } catch {
+    return "";
   }
+}
 
-  function setText(id, value) {
-    const el = $(id);
-    if (el) el.textContent = value;
-  }
+async function callAPI(endpoint, payload) {
+  const resp = await fetch(`${WORKER_BASE_URL}${endpoint}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload || {}),
+  });
 
-  function setValue(id, value) {
-    const el = $(id);
-    if (el) el.value = value;
-  }
+  const json = await resp.json().catch(() => ({}));
 
-  function getValue(id) {
-    const el = $(id);
-    return el ? el.value : "";
-  }
-
-  function show(id) {
-    const el = $(id);
-    if (el) el.style.display = "block";
-  }
-
-  function hide(id) {
-    const el = $(id);
-    if (el) el.style.display = "none";
-  }
-
-  function scrollToResults() {
-    const section = $("resultsSection");
-    if (section) section.scrollIntoView({ behavior: "smooth", block: "start" });
-  }
-
-  // ========= WORKER CALL =========
-  async function callWorkerJson(url, payload) {
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-
-    const raw = await res.text();
-    let data = null;
-    try {
-      data = raw ? JSON.parse(raw) : null;
-    } catch {
-      // resposta não JSON
+  if (!resp.ok) {
+    const code = json?.code || "";
+    if (resp.status === 429 || code === "RATE_LIMITED") {
+      const limit = Number(json?.limit ?? 10);
+      throw new Error(
+        `Desculpa, mas seu limite diário foi atingido. Você pode usar até ${limit} vezes por dia por IP. Tente novamente amanhã.`
+      );
     }
-
-    if (!res.ok) {
-      const status = res.status;
-      const code = (data && (data.code || data.error_code)) || "";
-
-      // Mensagens mais amigáveis, com base no status e no código retornado pelo Worker.
-      if (status === 429 || code === "RATE_LIMITED") {
-        const limit = Number(data?.limit ?? 3);
-        const resetAt = data?.resetAt;
-
-        const msgReset = resetAt ? `Tente novamente em ${formatDateTimeBR(resetAt)}.` : "Tente novamente amanhã.";
-        const msg = `Limite diário atingido. Você pode usar até ${limit} vezes por dia por IP. ${msgReset}`;
-
-        const err = new Error(msg);
-        err.code = "RATE_LIMITED";
-        err.status = status;
-        err.details = data;
-        throw err;
-      }
-
-      const msg = (data && (data.message || data.error)) || raw || "Erro ao chamar o serviço.";
-      const err = new Error(msg);
-      err.code = code || "WORKER_ERROR";
-      err.status = status;
-      err.details = data;
-      throw err;
-    }
-
-    return data || {};
+    throw new Error(json?.error || json?.message || "Erro ao processar.");
   }
 
-  function updateProcessButtonLabel(module) {
-    const btn = $("processBtn");
-    if (!btn) return;
-    btn.textContent = PROCESS_BUTTON_LABELS[module] || "✨ Gerar com IA";
+  return json?.data ?? json;
+}
+
+// =========================
+// Module switching
+// =========================
+function switchModule(module) {
+  currentModule = module;
+
+  // Tabs
+  document.querySelectorAll(".module-tab").forEach((btn) => {
+    btn.classList.toggle("active", btn.dataset.module === module);
+  });
+
+  // Contents
+  document.querySelectorAll(".module-content").forEach((el) => {
+    el.classList.toggle("active", el.dataset.module === module);
+  });
+
+  // Description
+  const desc = $("moduleDescription");
+  if (desc) desc.textContent = MODULE_DESCRIPTIONS[module] || "";
+  updateProcessButtonLabel();
+
+  // Reset results placeholder (opcional)
+  const results = $("resultsContainer");
+  if (results) {
+    results.innerHTML =
+      '<div style="color: var(--text-muted); font-size: 0.95rem; line-height: 1.6;">Preencha os dados e clique em “Gerar”.</div>';
   }
+}
 
-  function moveProcessButtonToModule(module) {
-    const btn = $("processBtn");
-    if (!btn) return;
-    const slot = document.querySelector(`.process-slot[data-module="${module}"]`);
-    if (slot) slot.appendChild(btn);
-    updateProcessButtonLabel(module);
-  }
+// =========================
+// PriorizAI Tasks UI
+// =========================
+function createTaskItem(index) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "task-item";
 
-  // ========= UI: MODULE SWITCH =========
-  function switchModule(module) {
-    currentModule = module;
-
-    document.querySelectorAll(".module-tab").forEach((t) => t.classList.remove("active"));
-    document.querySelector(`.module-tab[data-module="${module}"]`)?.classList.add("active");
-
-    document.querySelectorAll(".module-content").forEach((c) => c.classList.remove("active"));
-    document.querySelector(`.module-content[data-module="${module}"]`)?.classList.add("active");
-
-    const desc = $("moduleDescription");
-    if (desc) desc.textContent = MODULE_DESCRIPTIONS[module] || "";
-
-    const resultsSection = $("resultsSection");
-    if (resultsSection) resultsSection.style.display = "none";
-
-    moveProcessButtonToModule(module);
-  }
-
-  function initModuleTabs() {
-    document.querySelectorAll(".module-tab").forEach((tab) => {
-      tab.addEventListener("click", () => {
-        const m = tab.dataset.module;
-        if (!m) return;
-        switchModule(m);
-      });
-    });
-  }
-
-  // ========= UI: METHOD =========
-  function initMethodCards() {
-    document.querySelectorAll(".method-card").forEach((card) => {
-      card.addEventListener("click", () => {
-        if (card.classList.contains("disabled")) return;
-
-        document.querySelectorAll(".method-card").forEach((c) => c.classList.remove("active"));
-        card.classList.add("active");
-
-        const v = String(card.dataset.method || "").trim();
-        selectedMethod = v === "impact_effort" ? "impact_effort" : "impact_effort";
-      });
-    });
-  }
-
-  // ========= TASK LIST =========
-  function getTasksFromUI() {
-    const rows = document.querySelectorAll(".task-row");
-    const tasks = [];
-
-    rows.forEach((row) => {
-      const title = safeTrim(row.querySelector(".task-title")?.value || "");
-      const context = safeTrim(row.querySelector(".task-context")?.value || "");
-      const impact = safeTrim(row.querySelector(".task-impact")?.value || "");
-      const effort = safeTrim(row.querySelector(".task-effort")?.value || "");
-
-      if (title) {
-        tasks.push({ title, context, impact, effort });
-      }
-    });
-
-    return tasks;
-  }
-
-  function addTaskRow(initial = {}) {
-    const container = $("tasksContainer");
-    if (!container) return;
-
-    const div = document.createElement("div");
-    div.className = "task-row";
-
-    div.innerHTML = `
-      <div class="row-head">
-        <div class="row-title">Tarefa</div>
-        <button type="button" class="icon-btn remove-task" title="Remover">✕</button>
-      </div>
-
-      <label class="field">
-        <span class="label">Título</span>
-        <input class="task-title" placeholder="Ex.: Revisar funil de vendas" value="${escapeHtml(
-          initial.title || ""
-        )}" />
-      </label>
-
-      <label class="field">
-        <span class="label">Contexto</span>
-        <textarea class="task-context" rows="2" placeholder="Ex.: Q1, foco em conversão">${escapeHtml(
-          initial.context || ""
-        )}</textarea>
-      </label>
-
-      <div class="grid-2">
-        <label class="field">
-          <span class="label">Impacto</span>
-          <input class="task-impact" placeholder="Ex.: Alto" value="${escapeHtml(initial.impact || "")}" />
-        </label>
-        <label class="field">
-          <span class="label">Esforço</span>
-          <input class="task-effort" placeholder="Ex.: Médio" value="${escapeHtml(initial.effort || "")}" />
-        </label>
-      </div>
-    `;
-
-    div.querySelector(".remove-task")?.addEventListener("click", () => {
-      div.remove();
-      updateTaskCount();
-    });
-
-    container.appendChild(div);
-    updateTaskCount();
-  }
-
-  function updateTaskCount() {
-    const count = document.querySelectorAll(".task-row").length;
-    setText("taskCount", String(count));
-  }
-
-  function initTaskControls() {
-    $("addTaskBtn")?.addEventListener("click", () => addTaskRow());
-  }
-
-  // ========= RESULTS RENDER =========
-  function renderPrioritizeResult(data) {
-    const section = $("resultsSection");
-    const container = $("resultsContainer");
-    if (!section || !container) return;
-
-    section.style.display = "block";
-
-    const ordered = Array.isArray(data.ordered_tasks) ? data.ordered_tasks : [];
-
-    const orderRows = ordered
-      .map(
-        (t) => `
-      <tr>
-        <td style="color: var(--accent-cyan); font-weight: 700;">${escapeHtml(t.position)}</td>
-        <td>${escapeHtml(t.task_title)}</td>
-      </tr>`
-      )
-      .join("");
-
-    const orderTableHTML = `
-      <table class="order-table">
-        <thead>
-          <tr>
-            <th style="width: 90px;">Ordem</th>
-            <th>Tarefa</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${orderRows || `<tr><td colspan="2" style="opacity:.7;">Sem itens retornados.</td></tr>`}
-        </tbody>
-      </table>
-    `;
-
-    container.innerHTML = `
-      <div class="results-header">
-        <div class="results-title">${escapeHtml(MODULE_TITLES.prioritize)}</div>
-        <div class="results-subtitle">Resultado gerado com base nas tarefas informadas.</div>
-      </div>
-
-      <div class="results-card">
-        ${orderTableHTML}
-      </div>
-    `;
-
-    scrollToResults();
-  }
-
-  function renderCalmAIResult(data) {
-    const section = $("resultsSection");
-    const container = $("resultsContainer");
-    if (!section || !container) return;
-
-    section.style.display = "block";
-
-    const text = safeTrim(data.rewritten_text || "");
-
-    container.innerHTML = `
-      <div class="results-header">
-        <div class="results-title">${escapeHtml(MODULE_TITLES.calmai)}</div>
-        <div class="results-subtitle">Mensagem reescrita em um tom mais calmo.</div>
-      </div>
-
-      <div class="results-card">
-        <div class="result-text">${escapeHtml(text || "Sem texto retornado.")}</div>
-        <div class="result-actions">
-          <button type="button" class="btn" id="copyCalmBtn">Copiar</button>
+  wrapper.innerHTML = `
+        <div class="task-item-header">
+            <span class="task-number">Tarefa ${index + 1}</span>
+            <button class="remove-task" type="button" title="Remover">×</button>
         </div>
-      </div>
-    `;
 
-    $("copyCalmBtn")?.addEventListener("click", () => {
-      navigator.clipboard.writeText(text || "").catch(() => {});
-    });
-
-    scrollToResults();
-  }
-
-  function renderBriefAIResult(data) {
-    const section = $("resultsSection");
-    const container = $("resultsContainer");
-    if (!section || !container) return;
-
-    section.style.display = "block";
-
-    const summary = safeTrim(data.summary || "");
-    const bullets = Array.isArray(data.bullets) ? data.bullets : [];
-
-    const bulletsHtml = bullets
-      .map((b) => `<li>${escapeHtml(b)}</li>`)
-      .join("");
-
-    container.innerHTML = `
-      <div class="results-header">
-        <div class="results-title">${escapeHtml(MODULE_TITLES.briefai)}</div>
-        <div class="results-subtitle">Resumo em formato executivo.</div>
-      </div>
-
-      <div class="results-card">
-        <div class="result-text">${escapeHtml(summary || "Sem resumo retornado.")}</div>
-
-        ${
-          bullets.length
-            ? `<div class="result-bullets">
-                <div class="bullets-title">Pontos principais</div>
-                <ul>${bulletsHtml}</ul>
-              </div>`
-            : ""
-        }
-
-        <div class="result-actions">
-          <button type="button" class="btn" id="copyBriefBtn">Copiar</button>
+        <div class="form-group">
+            <label>Título</label>
+            <input class="input task-title" placeholder="Ex.: Revisar proposta do cliente" />
         </div>
-      </div>
+
+        <div class="form-group">
+            <label>Contexto</label>
+            <textarea class="textarea task-desc" placeholder="Detalhes importantes, dependências, prazo, etc."></textarea>
+        </div>
+
+        <div class="form-group">
+            <label>Importância</label>
+            <select class="select task-importance">
+                <option value="alta">Alta</option>
+                <option value="media" selected>Média</option>
+                <option value="baixa">Baixa</option>
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label>Tempo estimado</label>
+            <select class="select task-time">
+                <option value="curto">Curto</option>
+                <option value="medio" selected>Médio</option>
+                <option value="longo">Longo</option>
+            </select>
+        </div>
     `;
 
-    $("copyBriefBtn")?.addEventListener("click", () => {
-      const full = [summary, bullets.map((b) => `• ${b}`).join("\n")].filter(Boolean).join("\n\n");
-      navigator.clipboard.writeText(full).catch(() => {});
-    });
+  wrapper.querySelector(".remove-task").addEventListener("click", () => {
+    wrapper.remove();
+    renumberTasks();
+  });
 
-    scrollToResults();
-  }
+  return wrapper;
+}
 
-  function formatDateTimeBR(isoOrText) {
-    try {
-      const d = new Date(isoOrText);
-      if (Number.isNaN(d.getTime())) return String(isoOrText || "");
-      return new Intl.DateTimeFormat("pt-BR", {
-        timeZone: "America/Sao_Paulo",
-        day: "2-digit",
-        month: "2-digit",
-        year: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-      }).format(d);
-    } catch {
-      return String(isoOrText || "");
-    }
-  }
+function renumberTasks() {
+  document.querySelectorAll("#taskList .task-item").forEach((item, i) => {
+    const num = item.querySelector(".task-number");
+    if (num) num.textContent = `Tarefa ${i + 1}`;
+  });
+}
 
-  function showError(err) {
-    const section = $("resultsSection");
-    const container = $("resultsContainer");
-    if (!section || !container) return;
+function getTasksPayload() {
+  const items = Array.from(document.querySelectorAll("#taskList .task-item"));
+  const tasks = items
+    .map((item) => ({
+      title: item.querySelector(".task-title")?.value?.trim() || "",
+      description: item.querySelector(".task-desc")?.value?.trim() || "",
+      importance: item.querySelector(".task-importance")?.value || "media",
+      time: item.querySelector(".task-time")?.value || "medio",
+    }))
+    .filter((t) => t.title);
 
-    const e = typeof err === "string" ? { message: err } : (err || {});
-    const code = e.code || "";
-    const status = e.status || "";
-    const details = e.details || {};
+  return tasks;
+}
 
-    let icon = "❌";
-    let title = "Não foi possível gerar";
-    let message = e.message || "Erro ao processar. Tente novamente.";
-    let hint = "Confira sua conexão e tente novamente.";
-
-    if (code === "RATE_LIMITED" || status === 429) {
-      icon = "🛡️";
-      title = "Limite diário atingido";
-      const limit = Number(details?.limit ?? 3);
-      const resetAt = details?.resetAt;
-
-      const resetText = resetAt ? `Você poderá tentar novamente em ${formatDateTimeBR(resetAt)}.` : "Você poderá tentar novamente amanhã.";
-      message = `Você pode usar até ${limit} vezes por dia por IP. ${resetText}`;
-      hint = "Se você estiver em uma rede compartilhada, o limite pode valer para mais de uma pessoa.";
-    }
-
-    section.style.display = "block";
-    container.innerHTML = `
-      <div class="result-empty">
-        <div class="result-icon">${icon}</div>
-        <div style="font-weight:700;margin:6px 0 10px 0;">${escapeHtml(title)}</div>
-        <p>${escapeHtml(message)}</p>
-        <p style="opacity:.85;font-size:.95em;margin-top:10px;">${escapeHtml(hint)}</p>
-      </div>
+// =========================
+// Renderers
+// =========================
+function renderError(message) {
+  const results = $("resultsContainer");
+  if (!results) return;
+  results.innerHTML = `
+        <div class="result-item" style="border-color: rgba(255, 78, 205, 0.35);">
+            <div class="result-title" style="color: var(--accent-pink);">Erro</div>
+            <div style="color: var(--text-secondary); margin-top: 0.35rem; line-height: 1.6;">
+                ${escapeHtml(message)}
+            </div>
+        </div>
     `;
-    scrollToResults();
+}
+
+function renderPriorizAI(data) {
+  const results = $("resultsContainer");
+  if (!results) return;
+
+  const ordered = Array.isArray(data?.ordered_tasks) ? data.ordered_tasks : [];
+  if (!ordered.length) {
+    results.innerHTML =
+      '<div style="color: var(--text-muted); font-size: 0.95rem; line-height: 1.6;">Sem retorno válido.</div>';
+    return;
   }
 
-  function setBusy(isBusy) {
-    const btn = $("processBtn");
-    if (!btn) return;
-    btn.disabled = !!isBusy;
-    btn.classList.toggle("loading", !!isBusy);
-    btn.textContent = isBusy ? "Gerando..." : (PROCESS_BUTTON_LABELS[currentModule] || "✨ Gerar com IA");
-  }
+  results.innerHTML = ordered
+    .map(
+      (t) => `
+        <div class="result-item">
+            <div class="result-header">
+                <div class="result-rank">${escapeHtml(t.position)}</div>
+                <div class="result-title">${escapeHtml(t.task_title)}</div>
+            </div>
+        </div>
+    `
+    )
+    .join("");
+}
 
-  // ========= SUBMIT =========
-  async function onGenerate() {
+function renderCalmAI(data) {
+  const results = $("resultsContainer");
+  if (!results) return;
+
+  const text = (data?.rewritten_text || "").trim();
+  results.innerHTML = `
+        <div class="result-item">
+            <div class="result-title">Mensagem reescrita</div>
+            <div style="margin-top: 0.65rem; color: var(--text-secondary); line-height: 1.7; white-space: pre-line;">
+                ${escapeHtml(text || "Sem texto retornado.")}
+            </div>
+        </div>
+    `;
+}
+
+function renderBriefAI(data) {
+  const results = $("resultsContainer");
+  if (!results) return;
+
+  const summary = (data?.summary || "").trim();
+  const bullets = Array.isArray(data?.bullets) ? data.bullets : [];
+
+  const bulletsHtml =
+    bullets.length > 0
+      ? `<ul style="margin-top: 0.75rem; padding-left: 1.25rem; color: var(--text-secondary); line-height: 1.7;">
+            ${bullets.map((b) => `<li>${escapeHtml(b)}</li>`).join("")}
+         </ul>`
+      : "";
+
+  results.innerHTML = `
+        <div class="result-item">
+            <div class="result-title">Resumo</div>
+            <div style="margin-top: 0.65rem; color: var(--text-secondary); line-height: 1.7; white-space: pre-line;">
+                ${escapeHtml(summary || "Sem resumo retornado.")}
+            </div>
+            ${bulletsHtml}
+        </div>
+    `;
+}
+
+// =========================
+// Actions
+// =========================
+async function processCurrentModule() {
+  if (isBusy) return;
+
+  try {
     setBusy(true);
 
-    try {
-      if (currentModule === "prioritize") {
-        const tasks = getTasksFromUI();
-        if (!tasks.length) {
-          showError("Inclua pelo menos 1 tarefa antes de gerar.");
-          return;
-        }
+    if (currentModule === "priorizai") {
+      const name = $("priorizaiName")?.value?.trim() || "Castelão";
+      const method = $("priorizaiMethod")?.value || "impact_effort";
+      const tasks = getTasksPayload();
+      if (!tasks.length) throw new Error("Adicione ao menos 1 tarefa com título.");
 
-        const url = WORKER_BASE_URL + MODULE_ENDPOINTS.prioritize;
-        const payload = {
-          method: selectedMethod,
-          tasks,
-        };
-
-        const res = await callWorkerJson(url, payload);
-        if (!res?.ok) throw new Error(res?.error || "Falha ao gerar priorização.");
-
-        renderPrioritizeResult(res.data || {});
-        return;
-      }
-
-      if (currentModule === "calmai") {
-        const text = safeTrim(getValue("calmText"));
-        if (!text) {
-          showError("Preencha o texto antes de gerar.");
-          return;
-        }
-
-        const url = WORKER_BASE_URL + MODULE_ENDPOINTS.calmai;
-        const payload = {
-          text,
-          tone: safeTrim(getValue("calmTone")) || "neutro",
-        };
-
-        const res = await callWorkerJson(url, payload);
-        if (!res?.ok) throw new Error(res?.error || "Falha ao gerar mensagem.");
-
-        renderCalmAIResult(res.data || {});
-        return;
-      }
-
-      if (currentModule === "briefai") {
-        const text = safeTrim(getValue("briefText"));
-        if (!text) {
-          showError("Preencha o texto antes de gerar.");
-          return;
-        }
-
-        const url = WORKER_BASE_URL + MODULE_ENDPOINTS.briefai;
-        const payload = {
-          text,
-          style: safeTrim(getValue("briefStyle")) || "executivo",
-        };
-
-        const res = await callWorkerJson(url, payload);
-        if (!res?.ok) throw new Error(res?.error || "Falha ao gerar resumo.");
-
-        renderBriefAIResult(res.data || {});
-        return;
-      }
-
-      showError("Módulo inválido.");
-    } catch (err) {
-      showError(err);
-    } finally {
-      setBusy(false);
+      const data = await callAPI(MODULE_ENDPOINTS.priorizai, { name, method, tasks });
+      renderPriorizAI(data);
+      return;
     }
+
+    if (currentModule === "calmai") {
+      const name = $("calmaiName")?.value?.trim() || "Castelão";
+      const text = $("calmaiText")?.value?.trim() || "";
+      if (!text) throw new Error("Informe sua mensagem.");
+
+      const data = await callAPI(MODULE_ENDPOINTS.calmai, { name, text });
+      renderCalmAI(data);
+      return;
+    }
+
+    if (currentModule === "briefai") {
+      const name = $("briefaiName")?.value?.trim() || "Castelão";
+      const text = $("briefaiText")?.value?.trim() || "";
+      if (!text) throw new Error("Informe o texto.");
+
+      const data = await callAPI(MODULE_ENDPOINTS.briefai, { name, text });
+      renderBriefAI(data);
+      return;
+    }
+  } catch (err) {
+    renderError(err?.message || "Erro ao processar.");
+  } finally {
+    setBusy(false);
   }
+}
 
-  // ========= INIT =========
-  function initProcessButton() {
-    const btn = $("processBtn");
-    if (!btn) return;
-    btn.addEventListener("click", onGenerate);
-    moveProcessButtonToModule(currentModule);
-  }
-
-  function initDefaults() {
-    // Tarefas iniciais
-    addTaskRow({ title: "Definir foco da semana", context: "Gestão", impact: "Alto", effort: "Baixo" });
-    addTaskRow({ title: "Revisar backlog", context: "Produto", impact: "Médio", effort: "Médio" });
-
-    // Módulo inicial
-    switchModule("prioritize");
-  }
-
-  document.addEventListener("DOMContentLoaded", () => {
-    initModuleTabs();
-    initMethodCards();
-    initTaskControls();
-    initProcessButton();
-    initDefaults();
+// =========================
+// Init
+// =========================
+document.addEventListener("DOMContentLoaded", () => {
+  // Tabs
+  document.querySelectorAll(".module-tab").forEach((btn) => {
+    btn.addEventListener("click", () => switchModule(btn.dataset.module));
   });
-})();
+
+  // Default module
+  switchModule("priorizai");
+  updateProcessButtonLabel();
+
+  // Task list start
+  const list = $("taskList");
+  if (list) {
+    list.appendChild(createTaskItem(0));
+    list.appendChild(createTaskItem(1));
+  }
+
+  // Add task
+  $("addTaskBtn")?.addEventListener("click", () => {
+    const list = $("taskList");
+    if (!list) return;
+    const index = list.querySelectorAll(".task-item").length;
+    list.appendChild(createTaskItem(index));
+    renumberTasks();
+  });
+
+  // Main button
+  $("processBtn")?.addEventListener("click", processCurrentModule);
+});
