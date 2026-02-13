@@ -324,62 +324,6 @@
             position: relative;
         }
 
-        /* Floating Action Button */
-        .fab-container {
-            position: fixed;
-            bottom: 2rem;
-            right: 2rem;
-            z-index: 100;
-            animation: fadeInUp 1s ease-out 1s both;
-        }
-
-        .fab {
-            width: 70px;
-            height: 70px;
-            border-radius: 50%;
-            background: var(--accent-cyan);
-            border: none;
-            color: var(--bg-darker);
-            font-size: 1.5rem;
-            cursor: pointer;
-            box-shadow: 
-                0 8px 32px rgba(0, 217, 255, 0.4),
-                0 0 60px rgba(0, 217, 255, 0.3);
-            transition: all 0.3s ease;
-            position: relative;
-            overflow: hidden;
-        }
-
-        .fab::before {
-            content: '';
-            position: absolute;
-            inset: -2px;
-            background: conic-gradient(from 0deg, transparent, var(--accent-cyan), transparent);
-            border-radius: 50%;
-            animation: rotate 3s linear infinite;
-            opacity: 0;
-        }
-
-        .fab:hover {
-            transform: scale(1.1) rotate(90deg);
-            box-shadow: 
-                0 12px 40px rgba(0, 217, 255, 0.5),
-                0 0 80px rgba(0, 217, 255, 0.4);
-        }
-
-        .fab:hover::before {
-            opacity: 0.6;
-        }
-
-        .fab:active {
-            transform: scale(1.05) rotate(90deg);
-        }
-
-        .fab:disabled {
-            opacity: 0.4;
-            cursor: not-allowed;
-        }
-
         /* Section Container */
         .section {
             background: var(--bg-card);
@@ -696,6 +640,34 @@
             transform: none;
         }
 
+        .btn-primary {
+            background: var(--accent-cyan);
+            color: var(--bg-darker);
+            border-color: rgba(0, 217, 255, 0.35);
+            box-shadow: 0 8px 32px rgba(0, 217, 255, 0.25);
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-1px);
+            box-shadow:
+                0 12px 40px rgba(0, 217, 255, 0.35),
+                0 0 40px rgba(0, 217, 255, 0.15);
+        }
+
+        .btn-primary:active {
+            transform: translateY(0px);
+        }
+
+        .action-row {
+            display: flex;
+            justify-content: flex-end;
+            margin-top: 1.5rem;
+        }
+
+        .action-row .btn {
+            min-width: 240px;
+        }
+
         .btn-secondary {
             border-color: rgba(0, 217, 255, 0.2);
         }
@@ -945,16 +917,6 @@
                 grid-template-columns: 1fr;
             }
 
-            .fab-container {
-                bottom: 1rem;
-                right: 1rem;
-            }
-
-            .fab {
-                width: 60px;
-                height: 60px;
-            }
-
             .rank-number {
                 font-size: 2.5rem;
             }
@@ -1112,6 +1074,12 @@
                         </button>
                         <span class="counter" id="taskCounter">3/10</span>
                     </div>
+
+                    <div class="action-row">
+                        <div class="process-slot" data-module="priorizai">
+                            <button class="btn btn-primary" id="processBtn" type="button">✨ Priorizar tarefas</button>
+                        </div>
+                    </div>
                 </section>
             </div>
 
@@ -1146,6 +1114,10 @@
                     <div class="form-group">
                         <label class="label">Desabafe aqui <span class="required">*</span></label>
                         <textarea id="calmaiText" placeholder="Ex.: Estou sobrecarregado com o trabalho e não consigo me organizar..." style="min-height: 150px;" required></textarea>
+                    </div>
+
+                    <div class="action-row">
+                        <div class="process-slot" data-module="calmai"></div>
                     </div>
                 </section>
             </div>
@@ -1182,16 +1154,13 @@
                         <label class="label">Texto para análise <span class="required">*</span></label>
                         <textarea id="briefaiText" placeholder="Ex.: Estou montando um projeto de e-commerce para vender produtos artesanais. Preciso definir público-alvo, plataforma, estratégia de marketing..." style="min-height: 200px;" required></textarea>
                     </div>
+
+                    <div class="action-row">
+                        <div class="process-slot" data-module="briefai"></div>
+                    </div>
                 </section>
             </div>
         </div>
-    </div>
-
-    <!-- Floating Action Button -->
-    <div class="fab-container">
-        <button class="fab" id="processBtn" title="Processar com IA">
-            <span>✨</span>
-        </button>
     </div>
 
     <script src="./app.js" defer></script>
