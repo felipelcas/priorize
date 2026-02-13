@@ -1,59 +1,46 @@
+/* worker/src/index.js - Cloudflare Worker (API PriorizAI + CalmAI + BriefAI) */
 export default {
-  async fetch(request, env, ctx) {
+  async fetch(request, env) {
     const url = new URL(request.url);
 
+    // CORS
     if (request.method === "OPTIONS") {
       return new Response(null, { status: 204, headers: corsHeaders() });
     }
 
     try {
-      // Healthcheck
-      if (request.method === "GET" && url.pathname === "/") {
+      const pathname = normalizePath(url.pathname);
+
+      if (request.method === "GET" && pathname === "/") {
         return json({ ok: true, service: "priorizai-worker" }, 200);
       }
 
-      const pathname = normalizePath(url.pathname);
-
-      // Rate limit (por IP, por dia)
       if (request.method === "POST" && isLimitedPath(pathname)) {
-        const limit = getDailyLimit(env);
-        const blocked = await enforceDailyRateLimit(request, env, limit);
+        const blocked = await enforceDailyRateLimit(request, env);
         if (blocked) return blocked;
       }
 
       if (request.method === "POST" && pathname === "/prioritize") {
-        const body = await readJson(request);
-        const tasks = Array.isArray(body.tasks) ? body.tasks : [];
-        if (!tasks.length) throw new Error("Informe ao menos 1 tarefa.");
-        const result = await handlePrioritize(env, body);
-        return json({ ok: true, data: result }, 200);
+        return await handlePrioritize(request, env);
       }
 
       if (request.method === "POST" && pathname === "/calmai") {
-        const body = await readJson(request);
-        const text = cleanText(body?.text);
-        if (!text) throw new Error("Informe o texto.");
-        const result = await handleCalmAI(env, body);
-        return json({ ok: true, data: result }, 200);
+        return await handleCalmai(request, env);
       }
 
       if (request.method === "POST" && pathname === "/briefai") {
-        const body = await readJson(request);
-        const text = cleanText(body?.text);
-        if (!text) throw new Error("Informe o texto.");
-        const result = await handleBriefAI(env, body);
-        return json({ ok: true, data: result }, 200);
+        return await handleBriefAI(request, env);
       }
 
-      return json({ ok: false, error: "Not Found" }, 404);
+      return json({ error: "Rota não encontrada." }, 404);
     } catch (err) {
-      return json({ ok: false, error: err?.message || "Erro interno" }, 500);
+      return json({ error: err?.message || "Erro inesperado." }, 500);
     }
   },
 };
 
 // =========================
-// Routing helpers
+// Helpers: routing + CORS
 // =========================
 function normalizePath(pathname) {
   const p = String(pathname || "/").trim();
@@ -65,20 +52,95 @@ function isLimitedPath(pathname) {
   return pathname === "/prioritize" || pathname === "/calmai" || pathname === "/briefai";
 }
 
+function corsHeaders() {
+  return {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type",
+  };
+}
+
+function json(data, status = 200) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: {
+      ...corsHeaders(),
+      "Content-Type": "application/json; charset=utf-8",
+    },
+  });
+}
+
 // =========================
-// Rate limit helpers
+// Validation + sanitization
 // =========================
-function getDailyLimit(env) {
-  const raw = String(env?.IP_DAILY_LIMIT ?? "").trim();
-  const n = parseInt(raw, 10);
-  if (!Number.isFinite(n) || n < 1) {
-    throw new Error("IP_DAILY_LIMIT inválido. Configure como número inteiro (secret) no Cloudflare.");
-  }
+function cleanText(text) {
+  return String(text || "").replace(/\u0000/g, "").trim();
+}
+
+function looksLikeInjection(text) {
+  const t = cleanText(text).toLowerCase();
+
+  const xss = ["<script", "</script", "<iframe", "<object", "<embed", "<svg", "javascript:", "onerror=", "onload="];
+  if (xss.some((p) => t.includes(p))) return true;
+
+  const sqli = [
+    " union select",
+    "drop table",
+    "insert into",
+    "delete from",
+    "update ",
+    " or 1=1",
+    "' or '1'='1",
+    "\" or \"1\"=\"1",
+    "--",
+    "/*",
+    "*/",
+    ";--",
+  ];
+  if (sqli.some((p) => t.includes(p))) return true;
+
+  return false;
+}
+
+function mustBeString(name, val, { required = false, min = 0, max = 9999 } = {}) {
+  const v = cleanText(val);
+  if (required && !v) throw new Error(`Preencha: ${name}.`);
+  if (!required && !v) return "";
+
+  if (v.length < min) throw new Error(`${name} muito curto.`);
+  if (v.length > max) throw new Error(`${name} passou do limite de caracteres.`);
+  if (looksLikeInjection(v)) throw new Error(`${name} parece ter conteúdo perigoso.`);
+
+  return v;
+}
+
+function mustBeInt(name, val, { min = 0, max = 999999 } = {}) {
+  const n = Number(val);
+  if (!Number.isInteger(n)) throw new Error(`${name} inválido.`);
+  if (n < min || n > max) throw new Error(`${name} fora do intervalo.`);
   return n;
 }
 
+async function readJson(request) {
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    throw new Error("JSON inválido.");
+  }
+  if (!body || typeof body !== "object") throw new Error("Body inválido.");
+  return body;
+}
+
+// =========================
+// Rate limit (por IP, por dia)
+// =========================
+function getClientIp(request) {
+  const h = request.headers;
+  return (h.get("CF-Connecting-IP") || h.get("X-Forwarded-For") || "").split(",")[0].trim();
+}
+
 function saoPauloDateKey() {
-  // YYYY-MM-DD em America/Sao_Paulo
   return new Intl.DateTimeFormat("en-CA", {
     timeZone: "America/Sao_Paulo",
     year: "numeric",
@@ -93,27 +155,30 @@ async function sha256Hex(input) {
   return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-function getClientIp(request) {
-  const h = request.headers;
-  return (h.get("CF-Connecting-IP") || h.get("X-Forwarded-For") || "").split(",")[0].trim();
+function getDailyLimit(env) {
+  const raw = cleanText(env?.IP_DAILY_LIMIT);
+  const n = parseInt(raw, 10);
+  if (!Number.isFinite(n) || n < 1) {
+    throw new Error("IP_DAILY_LIMIT inválido. Configure como número inteiro (secret) no Cloudflare.");
+  }
+  return n;
 }
 
-async function enforceDailyRateLimit(request, env, limit) {
+async function enforceDailyRateLimit(request, env) {
   const kv = env?.RATE_LIMIT_KV;
   if (!kv) {
-    return json(
-      { ok: false, code: "CONFIG_ERROR", message: "RATE_LIMIT_KV não configurado no Worker." },
-      500
-    );
+    return json({ error: "RATE_LIMIT_KV não configurado no Worker." }, 500);
   }
 
-  const salt = String(env?.HASH_SALT ?? "").trim();
+  const salt = cleanText(env?.HASH_SALT);
   if (!salt) {
-    return json({ ok: false, code: "CONFIG_ERROR", message: "HASH_SALT não configurado no Worker." }, 500);
+    return json({ error: "HASH_SALT não configurado no Worker." }, 500);
   }
 
+  const limit = getDailyLimit(env);
   const ip = getClientIp(request) || "0.0.0.0";
   const day = saoPauloDateKey();
+
   const hash = await sha256Hex(`${salt}:${ip}`);
   const key = `rl:${day}:${hash}`;
 
@@ -123,68 +188,32 @@ async function enforceDailyRateLimit(request, env, limit) {
   if (current >= limit) {
     return json(
       {
-        ok: false,
+        error: `Desculpa, mas seu limite diário foi atingido. Você pode usar até ${limit} vezes por dia por IP. Tente novamente amanhã.`,
         code: "RATE_LIMITED",
         limit,
         remaining: 0,
-        message:
-          `Desculpa, mas seu limite diário foi atingido. ` +
-          `Você pode usar até ${limit} vezes por dia por IP. ` +
-          `Tente novamente amanhã.`,
       },
       429
     );
   }
 
-  // TTL só para limpeza. A chave já é por dia.
+  // TTL só para limpeza. A chave já inclui o dia.
   await kv.put(key, String(current + 1), { expirationTtl: 172800 });
   return null;
-}
-
-// =========================
-// CORS / JSON
-// =========================
-function corsHeaders() {
-  return {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type,Authorization",
-  };
-}
-
-function json(obj, status = 200) {
-  return new Response(JSON.stringify(obj), {
-    status,
-    headers: { ...corsHeaders(), "Content-Type": "application/json; charset=utf-8" },
-  });
-}
-
-async function readJson(request) {
-  try {
-    const body = await request.json();
-    if (!body || typeof body !== "object") throw new Error();
-    return body;
-  } catch {
-    throw new Error("JSON inválido.");
-  }
-}
-
-function cleanText(text) {
-  return String(text || "").replace(/\u0000/g, "").trim();
 }
 
 // =========================
 // OpenAI
 // =========================
 function requireOpenAIKey(env) {
-  const key = String(env?.OPENAI_API_KEY ?? "").trim();
-  if (!key) throw new Error("OPENAI_API_KEY não configurada no Worker.");
+  const key = cleanText(env?.OPENAI_API_KEY);
+  if (!key) throw new Error("OPENAI_API_KEY não configurada no Worker (Secrets/Vars).");
   return key;
 }
 
 function requireModel(env) {
-  const model = String(env?.OPENAI_MODEL ?? "").trim();
-  if (!model) throw new Error("OPENAI_MODEL não configurado no Worker.");
+  const model = cleanText(env?.OPENAI_MODEL);
+  if (!model) throw new Error("OPENAI_MODEL não configurado no Worker (Vars).");
   return model;
 }
 
@@ -192,169 +221,248 @@ async function openaiChat(env, payload) {
   const key = requireOpenAIKey(env);
   const res = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
+    headers: {
+      Authorization: `Bearer ${key}`,
+      "Content-Type": "application/json",
+    },
     body: JSON.stringify(payload),
   });
 
-  const text = await res.text();
-  let data = null;
-  try {
-    data = text ? JSON.parse(text) : null;
-  } catch {}
-
-  if (!res.ok) throw new Error(data?.error?.message || data?.message || text || "Falha no OpenAI.");
+  const data = await res.json().catch(() => null);
+  if (!res.ok) {
+    const msg = data?.error?.message || "Erro na OpenAI.";
+    throw new Error(msg);
+  }
   return data;
 }
 
 // =========================
-// Modules
+// Handlers
 // =========================
-function safeJsonParse(str, fallbackObj) {
-  try {
-    const obj = JSON.parse(String(str || ""));
-    return obj && typeof obj === "object" ? obj : fallbackObj;
-  } catch {
-    return fallbackObj;
-  }
-}
+async function handlePrioritize(request, env) {
+  const body = await readJson(request);
 
-async function handlePrioritize(env, body) {
+  const name = mustBeString("Seu nome", body.name, { required: true, min: 2, max: 60 });
+  const method = mustBeString("Método", body.method, { required: true, min: 3, max: 40 });
+
+  if (method !== "impact_effort") {
+    return json({ error: "Por enquanto, só o método Impacto e Esforço está liberado." }, 400);
+  }
+
+  if (!Array.isArray(body.tasks)) {
+    return json({ error: "tasks deve ser uma lista." }, 400);
+  }
+
+  const tasksRaw = body.tasks.slice(0, 10);
+  if (tasksRaw.length < 3) {
+    return json({ error: "Envie no mínimo 3 tarefas." }, 400);
+  }
+
+  const tasks = tasksRaw.map((t, idx) => {
+    const title = mustBeString(`Tarefa ${idx + 1} - título`, t.title, { required: true, min: 3, max: 80 });
+    const description = mustBeString(`Tarefa ${idx + 1} - descrição`, t.description, { required: true, min: 10, max: 800 });
+
+    const importance = mustBeInt(`Tarefa ${idx + 1} - importância`, t.importance, { min: 1, max: 5 });
+    const time_cost = mustBeInt(`Tarefa ${idx + 1} - tempo`, t.time_cost, { min: 1, max: 5 });
+
+    const importance_label = mustBeString(`Tarefa ${idx + 1} - rótulo importância`, t.importance_label, { required: true, min: 2, max: 40 });
+    const time_label = mustBeString(`Tarefa ${idx + 1} - rótulo tempo`, t.time_label, { required: true, min: 2, max: 40 });
+
+    return { title, description, importance, time_cost, importance_label, time_label };
+  });
+
   const model = requireModel(env);
 
-  const method = cleanText(body?.method) || "impact_effort";
-  const tasks = Array.isArray(body?.tasks) ? body.tasks : [];
-  const name = cleanText(body?.name) || "Castelão";
+  const system = [
+    "Você é o PriorizAI.",
+    "Fale como um colega de trabalho legal, simples e direto.",
+    "O usuário tem 16 anos e pouca instrução.",
+    "Use o nome do usuário e cite as tarefas para personalizar.",
+    "Muito importante: use também a descrição para estimar tempo/complexidade e importância real.",
+    "Se a escolha do usuário (importância/tempo) estiver incoerente com a descrição, ajuste sua análise sem julgar e explique gentilmente.",
+    "Não invente fatos externos. Use só o que foi informado.",
+    "Retorne SOMENTE JSON no schema pedido.",
+  ].join(" ");
 
-  const payload = {
-    model,
-    temperature: 0.2,
-    response_format: { type: "json_object" },
-    messages: [
-      {
-        role: "system",
-        content:
-          "Você é a PriorizAI. Retorne APENAS JSON válido e estrito no formato " +
-          "{\"ordered_tasks\":[{\"position\":1,\"task_title\":\"...\"}]}.\n" +
-          "Regras:\n" +
-          "1) Ordene as tarefas do usuário do mais importante para o menos importante.\n" +
-          "2) Use 'task_title' com um título curto e fiel ao título original.\n" +
-          "3) 'position' deve começar em 1 e ser sequencial.\n" +
-          "4) Não inclua explicações, nem textos fora do JSON.",
+  const rule =
+    "Método Impacto e Esforço: faça primeiro o que é MAIS IMPORTANTE e leva MENOS TEMPO. " +
+    "Depois o que é muito importante mesmo se levar mais tempo. " +
+    "Por último, coisas pouco importantes e demoradas.";
+
+  const jsonSchema = {
+    name: "PriorizeResult",
+    strict: true,
+    schema: {
+      type: "object",
+      additionalProperties: false,
+      required: ["friendly_message", "method_used", "estimated_time_saved_percent", "summary", "ordered_tasks"],
+      properties: {
+        friendly_message: { type: "string" },
+        method_used: { type: "string" },
+        estimated_time_saved_percent: { type: "integer", minimum: 0, maximum: 80 },
+        summary: { type: "string" },
+        ordered_tasks: {
+          type: "array",
+          minItems: 3,
+          items: {
+            type: "object",
+            additionalProperties: false,
+            required: ["position", "task_title", "explanation", "key_points", "tip"],
+            properties: {
+              position: { type: "integer", minimum: 1, maximum: 10 },
+              task_title: { type: "string" },
+              explanation: { type: "string" },
+              key_points: { type: "array", minItems: 2, maxItems: 4, items: { type: "string" } },
+              tip: { type: "string" },
+            },
+          },
+        },
       },
-      { role: "user", content: JSON.stringify({ name, method, tasks }) },
+    },
+  };
+
+  const user = {
+    name,
+    method,
+    rule,
+    tasks,
+    response_rules: [
+      "Compare IMPORTÂNCIA e TEMPO escolhidos com a DESCRIÇÃO.",
+      "Se a descrição indicar tempo maior/menor, considere isso.",
+      "Se a descrição indicar urgência (prazo/visita/entrega), considere isso.",
+      "Crie uma tabela simples (Ordem, Tarefa) na saída do front, mas aqui retorne no JSON apenas os dados.",
+      "friendly_message: curto e personalizado.",
+      "summary: 2 a 3 frases.",
+      "Para cada tarefa: explanation (2 a 5 frases), key_points (2 a 4 itens), tip (1 frase).",
+      "estimated_time_saved_percent: inteiro 0..80, realista.",
     ],
   };
 
-  const out = await openaiChat(env, payload);
-  const parsed = safeJsonParse(out?.choices?.[0]?.message?.content, { ordered_tasks: [] });
-
-  const ordered = Array.isArray(parsed.ordered_tasks) ? parsed.ordered_tasks : [];
-  const cleanOrdered = ordered
-    .map((t, i) => ({
-      position: Number.isFinite(Number(t?.position)) ? Number(t.position) : i + 1,
-      task_title: cleanText(t?.task_title) || cleanText(t?.title) || "",
-    }))
-    .filter((t) => t.task_title);
-
-  return { ordered_tasks: cleanOrdered };
-}
-
-async function handleCalmAI(env, body) {
-  const model = requireModel(env);
-
-  const name = cleanText(body?.name) || "Castelão";
-  const tone = cleanText(body?.tone) || "calmo e objetivo";
-  const text = cleanText(body?.text);
-
-  const system =
-    "Você é a CalmAI, uma assistente elegante e calma.\n" +
-    "Objetivo: reescrever a mensagem do usuário para ficar mais calma, respeitosa e objetiva.\n" +
-    "Regras:\n" +
-    "1) Não copie o texto original literalmente.\n" +
-    "2) Mantenha a intenção e os fatos.\n" +
-    "3) Use frases curtas, pontuação simples e português do Brasil.\n" +
-    "4) Evite emojis. Se usar, no máximo 1.\n" +
-    "5) Não use markdown.\n" +
-    "6) Retorne APENAS JSON válido e estrito no formato {\"rewritten_text\":\"...\"}.";
-
   const payload = {
     model,
-    temperature: 0.4,
-    response_format: { type: "json_object" },
+    temperature: 0.6,
     messages: [
       { role: "system", content: system },
-      { role: "user", content: JSON.stringify({ name, tone, text }) },
+      { role: "user", content: JSON.stringify(user) },
     ],
+    response_format: { type: "json_schema", json_schema: jsonSchema },
   };
 
   const out = await openaiChat(env, payload);
-  let parsed = safeJsonParse(out?.choices?.[0]?.message?.content, { rewritten_text: "" });
-  let rewritten = cleanText(parsed?.rewritten_text);
+  const content = out?.choices?.[0]?.message?.content;
+  if (!content) throw new Error("Resposta vazia da OpenAI.");
 
-  if (rewritten && normalizeLoose(rewritten) === normalizeLoose(text)) {
-    const payload2 = {
-      ...payload,
-      temperature: 0.6,
-      messages: [
-        {
-          role: "system",
-          content:
-            system +
-            "\nRegra extra: a saída deve ser claramente diferente do texto original, com nova redação.",
-        },
-        { role: "user", content: JSON.stringify({ name, tone, text }) },
-      ],
-    };
-    const out2 = await openaiChat(env, payload2);
-    parsed = safeJsonParse(out2?.choices?.[0]?.message?.content, { rewritten_text: "" });
-    rewritten = cleanText(parsed?.rewritten_text);
+  let parsed;
+  try {
+    parsed = JSON.parse(content);
+  } catch {
+    throw new Error("Não consegui ler a resposta da IA em JSON.");
   }
 
-  return { rewritten_text: rewritten || "" };
+  return json(parsed, 200);
 }
 
-function normalizeLoose(s) {
-  return String(s || "")
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, " ")
-    .replace(/[^\p{L}\p{N}\s]/gu, "");
-}
+async function handleCalmai(request, env) {
+  const body = await readJson(request);
 
-async function handleBriefAI(env, body) {
+  const name = mustBeString("Seu nome", body.name, { required: true, min: 2, max: 60 });
+  const text = mustBeString("Texto", body.text, { required: true, min: 10, max: 500 });
+
   const model = requireModel(env);
 
-  const style = cleanText(body?.style) || "executivo";
-  const name = cleanText(body?.name) || "Castelão";
-  const text = cleanText(body?.text);
+  const diva = [
+    "Você é a Diva do Caos, uma conselheira provocadora, amiga debochada e mentora perspicaz.",
+    "Fala de forma informal, cheia de gírias, provoca e cutuca os usuários, alternando entre carinho e ironia.",
+    "Sempre provoca os usuários.",
+    "Seja concisa.",
+    "Dê um conselho engraçado, inteligente, provocador e reflexivo.",
+    "NÃO invente fatos. Use só o que o usuário contou.",
+    "SEMPRE termine com UMA pergunta provocante e direta.",
+  ].join(" ");
+
+  const userText = `Nome: ${name}\nProblema: ${text}`;
 
   const payload = {
     model,
-    temperature: 0.3,
-    response_format: { type: "json_object" },
+    temperature: 0.9,
     messages: [
-      {
-        role: "system",
-        content:
-          "Você é a BriefAI. Retorne APENAS JSON válido e estrito no formato " +
-          "{\"summary\":\"...\",\"bullets\":[\"...\"]}.\n" +
-          "Regras:\n" +
-          "1) Escreva em português do Brasil, tom profissional.\n" +
-          "2) 'summary' deve ter 2 a 4 frases curtas.\n" +
-          "3) 'bullets' deve ter de 3 a 7 itens, cada um com no máximo 1 frase.\n" +
-          "4) Não use markdown e não inclua textos fora do JSON.",
-      },
-      { role: "user", content: JSON.stringify({ name, style, text }) },
+      { role: "system", content: diva },
+      { role: "user", content: userText },
     ],
   };
 
   const out = await openaiChat(env, payload);
-  const parsed = safeJsonParse(out?.choices?.[0]?.message?.content, { summary: "", bullets: [] });
+  const reply = out?.choices?.[0]?.message?.content?.trim();
+  if (!reply) throw new Error("Resposta vazia da OpenAI.");
 
-  const summary = cleanText(parsed?.summary);
-  const bullets = Array.isArray(parsed?.bullets)
-    ? parsed.bullets.map((b) => cleanText(b)).filter(Boolean)
-    : [];
+  return json({ reply }, 200);
+}
 
-  return { summary, bullets };
+async function handleBriefAI(request, env) {
+  const body = await readJson(request);
+
+  const name = mustBeString("Seu nome", body.name, { required: true, min: 2, max: 60 });
+  const text = mustBeString("Texto", body.text, { required: true, min: 20, max: 6000 });
+
+  const model = requireModel(env);
+
+  const system = [
+    "Você é o BriefAI.",
+    "Escreva em português do Brasil.",
+    "Tom profissional, simples e direto.",
+    "Não invente fatos externos. Use só o que o usuário informou.",
+    "Retorne SOMENTE JSON no schema pedido.",
+  ].join(" ");
+
+  const jsonSchema = {
+    name: "BriefAIResult",
+    strict: true,
+    schema: {
+      type: "object",
+      additionalProperties: false,
+      required: ["friendlyMessage", "summary", "brief", "missingInfo", "nextSteps"],
+      properties: {
+        friendlyMessage: { type: "string" },
+        summary: { type: "string" },
+        brief: { type: "string" },
+        missingInfo: { type: "array", items: { type: "string" } },
+        nextSteps: { type: "array", items: { type: "string" } },
+      },
+    },
+  };
+
+  const user = {
+    name,
+    text,
+    rules: [
+      "friendlyMessage: curto e personalizado.",
+      "summary: 2 a 4 frases curtas.",
+      "brief: texto estruturado com seções e clareza.",
+      "missingInfo: lista objetiva do que falta perguntar ou confirmar.",
+      "nextSteps: lista de próximos passos práticos.",
+    ],
+  };
+
+  const payload = {
+    model,
+    temperature: 0.5,
+    messages: [
+      { role: "system", content: system },
+      { role: "user", content: JSON.stringify(user) },
+    ],
+    response_format: { type: "json_schema", json_schema: jsonSchema },
+  };
+
+  const out = await openaiChat(env, payload);
+  const content = out?.choices?.[0]?.message?.content;
+  if (!content) throw new Error("Resposta vazia da OpenAI.");
+
+  let parsed;
+  try {
+    parsed = JSON.parse(content);
+  } catch {
+    throw new Error("Não consegui ler a resposta da IA em JSON.");
+  }
+
+  return json(parsed, 200);
 }
