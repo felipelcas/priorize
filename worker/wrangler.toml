@@ -3,19 +3,10 @@ main = "index.js"
 compatibility_date = "2026-02-12"
 preview_urls = true
 
-[vars]
-# Limite diário por IP (default no código: 3)
-IP_DAILY_LIMIT = 3
-
-# IMPORTANTE:
-# Não coloque o salt no Git. Use secret:
-# wrangler secret put IP_HASH_SALT
-# (Use um valor aleatório longo)
-
-[[durable_objects.bindings]]
-name = "RATE_LIMITER"
-class_name = "RateLimiter"
-
-[[migrations]]
-tag = "v1"
-new_classes = ["RateLimiter"]
+# Opcional: se você for usar Wrangler/GitHub Actions para deploy.
+# Se você fizer o binding pelo Dashboard, pode ignorar esta parte.
+# Pegue o ID da KV Namespace no Cloudflare Dashboard.
+[[kv_namespaces]]
+binding = "RATE_LIMIT_KV"
+id = "COLE_AQUI_O_ID_DA_KV_NAMESPACE"
+preview_id = "COLE_AQUI_O_ID_DA_KV_PREVIEW"
