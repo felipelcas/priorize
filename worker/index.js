@@ -1,4 +1,4 @@
-/* worker/src/index.js - Cloudflare Worker (API PriorizAI + CalmAI) */
+/* worker/src/index.js - Cloudflare Worker (API PriorizAI + CalmAI + BriefAI) */
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -19,6 +19,10 @@ export default {
 
       if (request.method === "POST" && url.pathname === "/calmai") {
         return await handleCalmai(request, env);
+      }
+
+      if (request.method === "POST" && url.pathname === "/briefai") {
+        return await handleBriefai(request, env);
       }
 
       return json({ error: "Rota não encontrada." }, 404);
@@ -70,7 +74,6 @@ function looksLikeInjection(text) {
     "--",
     "/*",
     "*/",
-    ";--",
   ];
   if (sqli.some((p) => t.includes(p))) return true;
 
@@ -132,6 +135,22 @@ async function openaiChat(env, payload) {
   return data;
 }
 
+function stripQuestionMarksDeep(obj) {
+  const clean = (s) => cleanText(String(s || "")).replace(/\?/g, "").replace(/[\s]+$/g, "").trim();
+
+  if (typeof obj === "string") return clean(obj);
+
+  if (Array.isArray(obj)) return obj.map((x) => stripQuestionMarksDeep(x));
+
+  if (obj && typeof obj === "object") {
+    const out = {};
+    for (const k of Object.keys(obj)) out[k] = stripQuestionMarksDeep(obj[k]);
+    return out;
+  }
+
+  return obj;
+}
+
 async function handlePrioritize(request, env) {
   const body = await readJson(request);
 
@@ -171,8 +190,8 @@ async function handlePrioritize(request, env) {
     "Fale como um colega de trabalho legal, simples e direto.",
     "O usuário tem 16 anos e pouca instrução.",
     "Use o nome do usuário e cite as tarefas para personalizar.",
-    "Muito importante: use também a descrição para estimar tempo/complexidade e importância real.",
-    "Se a escolha do usuário (importância/tempo) estiver incoerente com a descrição, ajuste sua análise sem julgar e explique gentilmente.",
+    "Muito importante: use também a descrição para estimar tempo e complexidade e importância real.",
+    "Se a escolha do usuário estiver incoerente com a descrição, ajuste sua análise sem julgar e explique gentilmente.",
     "Não invente fatos externos. Use só o que foi informado.",
     "Retorne SOMENTE JSON no schema pedido.",
   ].join(" ");
@@ -220,9 +239,9 @@ async function handlePrioritize(request, env) {
     tasks,
     response_rules: [
       "Compare IMPORTÂNCIA e TEMPO escolhidos com a DESCRIÇÃO.",
-      "Se a descrição indicar tempo maior/menor, considere isso.",
-      "Se a descrição indicar urgência (prazo/visita/entrega), considere isso.",
-      "Crie uma tabela simples (Ordem, Tarefa) na saída do front, mas aqui retorne no JSON apenas os dados.",
+      "Se a descrição indicar tempo maior ou menor, considere isso.",
+      "Se a descrição indicar urgência, considere isso.",
+      "Retorne somente o JSON.",
       "friendly_message: curto e personalizado.",
       "summary: 2 a 3 frases.",
       "Para cada tarefa: explanation (2 a 5 frases), key_points (2 a 4 itens), tip (1 frase).",
@@ -288,4 +307,80 @@ async function handleCalmai(request, env) {
   if (!reply) throw new Error("Resposta vazia da OpenAI.");
 
   return json({ reply }, 200);
+}
+
+async function handleBriefai(request, env) {
+  const body = await readJson(request);
+
+  const name = mustBeString("Seu nome", body.name, { required: true, min: 2, max: 60 });
+  const text = mustBeString("Seu texto", body.text, { required: true, min: 20, max: 1500 });
+
+  const model = env?.OPENAI_MODEL || "gpt-4o-mini";
+
+  const system = [
+    "Você é o BriefAI.",
+    "Linguagem simples, direta e objetiva. Sem termos difíceis.",
+    "Não faça perguntas ao usuário.",
+    "Não use o caractere de interrogação.",
+    "Não termine com interrogação.",
+    "Não invente fatos externos. Use só o texto fornecido.",
+    "Não peça dados sensíveis.",
+    "Se o texto parecer ter dados sensíveis, inclua um aviso curto para não colar esse tipo de informação.",
+    "Retorne SOMENTE JSON no schema pedido.",
+  ].join(" ");
+
+  const schema = {
+    name: "BriefAIResponse",
+    schema: {
+      type: "object",
+      additionalProperties: false,
+      required: ["friendlyMessage", "summary", "brief", "missingInfo", "nextSteps"],
+      properties: {
+        friendlyMessage: { type: "string" },
+        summary: { type: "string" },
+        brief: { type: "string" },
+        missingInfo: { type: "array", items: { type: "string" }, minItems: 0, maxItems: 10 },
+        nextSteps: { type: "array", items: { type: "string" }, minItems: 0, maxItems: 10 },
+      },
+    },
+  };
+
+  const user = {
+    name,
+    text,
+    output_rules: [
+      "friendlyMessage: 1 a 2 frases, personalizado com o nome.",
+      "summary: 4 a 7 linhas curtas, fáceis de ler.",
+      "brief: deve ter blocos fixos com esses títulos: Contexto, Objetivo, O que está acontecendo, Restrições e riscos, Plano de ação curto.",
+      "missingInfo: lista de pontos ausentes, sem perguntas.",
+      "nextSteps: lista objetiva de próximos passos, sem perguntas.",
+      "Não usar interrogação e não escrever frases em formato de pergunta.",
+    ],
+  };
+
+  const payload = {
+    model,
+    temperature: 0.5,
+    messages: [
+      { role: "system", content: system },
+      { role: "user", content: JSON.stringify(user) },
+    ],
+    response_format: { type: "json_schema", json_schema: schema },
+  };
+
+  const out = await openaiChat(env, payload);
+  const content = out?.choices?.[0]?.message?.content;
+  if (!content) throw new Error("Resposta vazia da OpenAI.");
+
+  let parsed;
+  try {
+    parsed = JSON.parse(content);
+  } catch {
+    throw new Error("Não consegui ler a resposta da IA em JSON.");
+  }
+
+  // Enforce: sem interrogação
+  parsed = stripQuestionMarksDeep(parsed);
+
+  return json(parsed, 200);
 }
