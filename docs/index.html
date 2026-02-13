@@ -243,101 +243,113 @@
             width: 0;
             height: 2px;
             background: var(--accent-cyan);
-            animation: expandWidth 1.5s ease-out 0.5s forwards;
-            box-shadow: 0 0 20px var(--glow-cyan);
+            box-shadow: 0 0 10px var(--glow-cyan);
+            animation: expandWidth 1s ease-out 0.5s forwards;
         }
 
-        .tagline {
-            font-size: 1.25rem;
+        .module-description {
+            font-size: 1.125rem;
             color: var(--text-secondary);
-            max-width: 600px;
-            margin: 0 auto;
-            animation: fadeInUp 0.8s ease-out 0.2s both;
+            margin-bottom: 1.5rem;
+            font-weight: 400;
+            max-width: 700px;
+            margin-left: auto;
+            margin-right: auto;
+            animation: fadeInUp 0.8s ease-out 0.3s both;
+            min-height: 1.5em;
         }
 
-        /* Main Layout */
-        .main-content {
-            display: grid;
-            grid-template-columns: 1fr;
-            gap: 2rem;
-            margin-top: 3rem;
-        }
-
-        @media (min-width: 1024px) {
-            .main-content {
-                grid-template-columns: 400px 1fr;
-                gap: 3rem;
-            }
-        }
-
-        /* Card Styles */
-        .card {
-            background: var(--bg-card);
-            border: 1px solid var(--border);
-            border-radius: 16px;
-            padding: 2rem;
+        /* Enhanced Privacy Badge */
+        .privacy-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 0.875rem 1.75rem;
+            background: linear-gradient(135deg, rgba(0, 217, 255, 0.08), rgba(0, 217, 255, 0.03));
+            border: 2px solid rgba(0, 217, 255, 0.3);
+            border-radius: 50px;
+            font-size: 0.9375rem;
+            color: var(--accent-cyan);
+            animation: fadeInUp 0.8s ease-out 0.5s both, glowPulse 3s ease-in-out infinite;
             position: relative;
             overflow: hidden;
-            animation: fadeInUp 0.8s ease-out 0.4s both;
+            font-weight: 600;
+            backdrop-filter: blur(10px);
+            box-shadow: 
+                0 0 20px rgba(0, 217, 255, 0.2),
+                inset 0 1px 0 rgba(255, 255, 255, 0.1);
         }
 
-        .card::before {
+        .privacy-badge::before {
             content: '';
             position: absolute;
             top: 0;
             left: -100%;
             width: 100%;
             height: 100%;
-            background: linear-gradient(90deg, transparent, rgba(0, 217, 255, 0.05), transparent);
-            animation: shimmerSweep 4s ease-in-out infinite;
+            background: linear-gradient(90deg, transparent, rgba(0, 217, 255, 0.2), transparent);
+            animation: shimmerSweep 3s ease-in-out infinite;
         }
 
-        .card-title {
-            font-size: 1.5rem;
-            font-weight: 700;
-            margin-bottom: 1rem;
+        .privacy-icon {
+            font-size: 1.125rem;
+            filter: drop-shadow(0 0 6px rgba(0, 217, 255, 0.6));
+        }
+
+        /* Usage Limit Notice */
+        .usage-limit {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 0.75rem 1.5rem;
+            background: rgba(255, 170, 0, 0.08);
+            border: 1px solid rgba(255, 170, 0, 0.3);
+            border-radius: 50px;
+            font-size: 0.875rem;
+            color: var(--warning);
+            margin-top: 1rem;
+            animation: fadeInUp 0.8s ease-out 0.7s both;
             position: relative;
-            z-index: 2;
+            overflow: hidden;
+            font-weight: 600;
+        }
+
+        .usage-limit::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 50%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 170, 0, 0.15), transparent);
+            animation: slideRight 4s ease-in-out infinite;
+        }
+
+        .usage-icon {
+            font-size: 1rem;
         }
 
         /* Module Tabs */
         .module-tabs {
             display: flex;
-            gap: 0.5rem;
-            margin-bottom: 1.5rem;
-            position: relative;
-            z-index: 2;
+            justify-content: center;
+            gap: 1rem;
+            margin: 2rem 0;
+            flex-wrap: wrap;
         }
 
         .module-tab {
-            flex: 1;
-            padding: 0.75rem 1rem;
-            background: transparent;
+            padding: 1rem 2rem;
+            background: rgba(255, 255, 255, 0.03);
             border: 1px solid var(--border);
             border-radius: 12px;
             color: var(--text-secondary);
-            font-family: inherit;
-            font-size: 0.9rem;
             font-weight: 600;
+            font-size: 1rem;
             cursor: pointer;
             transition: all 0.3s ease;
             position: relative;
             overflow: hidden;
-        }
-
-        .module-tab::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: -100%;
-            width: 100%;
-            height: 100%;
-            background: linear-gradient(90deg, transparent, rgba(0, 217, 255, 0.1), transparent);
-            transition: left 0.3s ease;
-        }
-
-        .module-tab:hover::before {
-            left: 100%;
         }
 
         .module-tab.active {
@@ -347,399 +359,26 @@
             box-shadow: 0 0 20px rgba(0, 217, 255, 0.2);
         }
 
-        /* Forms */
-        .form-group {
-            margin-bottom: 1.5rem;
-            position: relative;
-            z-index: 2;
-        }
-
-        .label {
-            display: block;
-            font-size: 0.9rem;
-            font-weight: 600;
-            color: var(--text-secondary);
-            margin-bottom: 0.5rem;
-        }
-
-        .required {
-            color: var(--accent-cyan);
-        }
-
-        input, textarea, select {
-            width: 100%;
-            padding: 0.875rem 1rem;
-            background: rgba(255, 255, 255, 0.02);
-            border: 1px solid var(--border);
-            border-radius: 12px;
-            color: var(--text-primary);
-            font-family: inherit;
-            font-size: 0.95rem;
-            transition: all 0.3s ease;
-        }
-
-        input:focus, textarea:focus, select:focus {
-            outline: none;
-            border-color: var(--accent-cyan);
-            box-shadow: 0 0 0 3px rgba(0, 217, 255, 0.1);
-        }
-
-        textarea {
-            resize: vertical;
-            min-height: 100px;
-        }
-
-        /* Task Cards */
-        .task-card {
-            background: rgba(255, 255, 255, 0.01);
-            border: 1px solid var(--border);
-            border-radius: 12px;
-            padding: 1.5rem;
-            margin-bottom: 1.5rem;
-            position: relative;
-            z-index: 2;
-        }
-
-        .task-number {
-            font-family: 'JetBrains Mono', monospace;
-            font-size: 0.8rem;
-            color: var(--accent-cyan);
-            margin-bottom: 1rem;
-            letter-spacing: 0.1em;
-        }
-
-        .input-row {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 1rem;
-        }
-
-        @media (max-width: 768px) {
-            .input-row {
-                grid-template-columns: 1fr;
-            }
-        }
-
-        /* Help Badge */
-        .help-badge {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            width: 18px;
-            height: 18px;
-            background: rgba(0, 217, 255, 0.1);
-            border: 1px solid rgba(0, 217, 255, 0.2);
-            border-radius: 50%;
-            color: var(--accent-cyan);
-            font-size: 0.7rem;
-            font-weight: 700;
-            margin-left: 0.5rem;
-            cursor: help;
-        }
-
-        /* Buttons */
-        .btn {
-            width: 100%;
-            padding: 1rem 1.5rem;
-            background: var(--accent-cyan);
-            border: none;
-            border-radius: 12px;
-            color: var(--bg-darker);
-            font-family: inherit;
-            font-size: 1rem;
-            font-weight: 700;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            position: relative;
-            overflow: hidden;
-            z-index: 2;
-        }
-
-        .btn::before {
+        .module-tab.active::after {
             content: '';
             position: absolute;
-            top: 0;
-            left: -100%;
+            bottom: 0;
+            left: 0;
             width: 100%;
-            height: 100%;
-            background: linear-gradient(90deg, transparent, rgba(0, 0, 0, 0.1), transparent);
-            animation: slideRight 2s ease-in-out infinite;
+            height: 2px;
+            background: var(--accent-cyan);
+            box-shadow: 0 0 10px var(--glow-cyan);
         }
 
-        .btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 10px 30px rgba(0, 217, 255, 0.3);
-            animation: glowPulse 2s ease-in-out infinite;
-        }
-
-        .btn:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-            transform: none;
-        }
-
-        .btn-secondary {
-            background: transparent;
-            border: 1px solid var(--border);
-            color: var(--text-secondary);
-            margin-top: 1rem;
-        }
-
-        .btn-secondary:hover {
-            background: rgba(255, 255, 255, 0.02);
-            box-shadow: none;
-            animation: none;
-        }
-
-        /* Task Counter */
-        .task-counter {
-            text-align: center;
-            margin-top: 1rem;
-            font-family: 'JetBrains Mono', monospace;
-            font-size: 0.85rem;
-            color: var(--text-muted);
-        }
-
-        /* Methods */
-        .methods {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 1rem;
-            margin-bottom: 2rem;
-            position: relative;
-            z-index: 2;
-        }
-
-        .method-card {
-            padding: 1.25rem;
-            border: 1px solid var(--border);
-            border-radius: 12px;
-            background: rgba(255, 255, 255, 0.01);
-            cursor: pointer;
-            transition: all 0.3s ease;
-            position: relative;
-            overflow: hidden;
-        }
-
-        .method-card:hover:not(.disabled) {
+        .module-tab:not(.active):hover {
+            background: rgba(255, 255, 255, 0.06);
             border-color: rgba(0, 217, 255, 0.3);
             transform: translateY(-2px);
         }
 
-        .method-card.active {
-            border-color: var(--accent-cyan);
-            background: rgba(0, 217, 255, 0.05);
-            box-shadow: 0 0 20px rgba(0, 217, 255, 0.1);
-        }
-
-        .method-card.disabled {
-            opacity: 0.3;
-            cursor: not-allowed;
-        }
-
-        .method-title {
-            font-size: 0.95rem;
-            font-weight: 700;
-            margin-bottom: 0.5rem;
-        }
-
-        .method-desc {
-            font-size: 0.8rem;
-            color: var(--text-muted);
-        }
-
-        /* Results Section */
-        .results-section {
-            display: none;
+        /* Main Content */
+        .main-wrapper {
             position: relative;
-        }
-
-        .results-container {
-            animation: fadeInUp 0.6s ease-out;
-        }
-
-        .result-header {
-            margin-bottom: 2rem;
-            position: relative;
-            z-index: 2;
-        }
-
-        .result-message {
-            font-size: 1.25rem;
-            font-weight: 700;
-            color: var(--accent-cyan);
-            margin-bottom: 0.75rem;
-        }
-
-        .result-summary {
-            color: var(--text-secondary);
-            font-size: 1rem;
-            line-height: 1.6;
-        }
-
-        .stat-badge {
-            display: inline-block;
-            padding: 0.5rem 1rem;
-            background: rgba(0, 255, 136, 0.1);
-            border: 1px solid rgba(0, 255, 136, 0.2);
-            border-radius: 20px;
-            color: var(--success);
-            font-size: 0.85rem;
-            font-weight: 600;
-            margin-top: 1rem;
-        }
-
-        /* Order Table */
-        .order-table {
-            background: rgba(255, 255, 255, 0.01);
-            border: 1px solid var(--border);
-            border-radius: 12px;
-            overflow: hidden;
-            margin-bottom: 2rem;
-        }
-
-        .table-header {
-            background: rgba(0, 217, 255, 0.05);
-            padding: 1rem;
-            font-weight: 700;
-            color: var(--accent-cyan);
-            font-size: 0.9rem;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-        }
-
-        .table-row {
-            display: grid;
-            grid-template-columns: 80px 1fr;
-            padding: 1rem;
-            border-bottom: 1px solid var(--border);
-            transition: background 0.3s ease;
-        }
-
-        .table-row:last-child {
-            border-bottom: none;
-        }
-
-        .table-row:hover {
-            background: rgba(255, 255, 255, 0.01);
-        }
-
-        .table-rank {
-            font-family: 'JetBrains Mono', monospace;
-            color: var(--accent-cyan);
-            font-weight: 700;
-        }
-
-        .table-task {
-            color: var(--text-primary);
-            font-weight: 500;
-        }
-
-        /* Ranked Tasks */
-        .ranked-task {
-            background: rgba(255, 255, 255, 0.01);
-            border: 1px solid var(--border);
-            border-radius: 12px;
-            padding: 1.5rem;
-            margin-bottom: 1.5rem;
-            position: relative;
-            z-index: 2;
-        }
-
-        .rank-badge {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            width: 32px;
-            height: 32px;
-            background: var(--accent-cyan);
-            border-radius: 50%;
-            color: var(--bg-darker);
-            font-weight: 800;
-            font-size: 0.9rem;
-            margin-bottom: 1rem;
-        }
-
-        .rank-title {
-            font-size: 1.1rem;
-            font-weight: 700;
-            margin-bottom: 0.75rem;
-            color: var(--text-primary);
-        }
-
-        .rank-explanation {
-            color: var(--text-secondary);
-            font-size: 0.95rem;
-            line-height: 1.6;
-            margin-bottom: 1rem;
-        }
-
-        .rank-points {
-            list-style: none;
-            margin-bottom: 1rem;
-        }
-
-        .rank-points li {
-            color: var(--text-secondary);
-            font-size: 0.9rem;
-            padding-left: 1.5rem;
-            margin-bottom: 0.5rem;
-            position: relative;
-        }
-
-        .rank-points li::before {
-            content: '→';
-            position: absolute;
-            left: 0;
-            color: var(--accent-cyan);
-            font-weight: 700;
-        }
-
-        .rank-tip {
-            padding: 1rem;
-            background: rgba(0, 217, 255, 0.05);
-            border: 1px solid rgba(0, 217, 255, 0.1);
-            border-radius: 10px;
-            color: var(--accent-cyan);
-            font-size: 0.9rem;
-            font-weight: 600;
-        }
-
-        /* Loading */
-        .loading {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            padding: 3rem;
-            text-align: center;
-        }
-
-        .spinner {
-            width: 50px;
-            height: 50px;
-            border: 3px solid rgba(0, 217, 255, 0.1);
-            border-top: 3px solid var(--accent-cyan);
-            border-radius: 50%;
-            animation: rotate 1s linear infinite;
-            margin-bottom: 1.5rem;
-        }
-
-        .loading-text {
-            color: var(--text-secondary);
-            font-size: 1rem;
-            font-weight: 500;
-        }
-
-        /* Error */
-        .error {
-            padding: 1.5rem;
-            background: rgba(255, 68, 68, 0.05);
-            border: 1px solid rgba(255, 68, 68, 0.2);
-            border-radius: 12px;
-            color: var(--error);
-            font-weight: 600;
-            text-align: center;
         }
 
         /* Module Content */
@@ -751,54 +390,756 @@
             display: block;
         }
 
-        /* CalmAI specific styles */
-        .calmai-textarea {
-            min-height: 140px;
-            font-size: 1rem;
-            line-height: 1.6;
+        /* Section Container */
+        .section {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            padding: 2.5rem;
+            margin-bottom: 2rem;
+            position: relative;
+            overflow: hidden;
+            animation: fadeInUp 0.6s ease-out both;
+            transition: all 0.3s ease;
         }
 
-        .calmai-response {
-            background: rgba(255, 255, 255, 0.01);
-            border: 1px solid var(--border);
-            border-radius: 12px;
-            padding: 2rem;
-            color: var(--text-secondary);
-            font-size: 1rem;
-            line-height: 1.8;
+        .section:nth-child(1) { animation-delay: 0.2s; }
+        .section:nth-child(2) { animation-delay: 0.4s; }
+        .section:nth-child(3) { animation-delay: 0.6s; }
+
+        /* Animated corner accents */
+        .section::before,
+        .section::after {
+            content: '';
+            position: absolute;
+            width: 100px;
+            height: 100px;
+            border: 1px solid var(--accent-cyan);
+            opacity: 0.1;
+            transition: all 0.3s ease;
         }
 
-        /* BriefAI styles */
-        .brief-section {
-            background: rgba(255, 255, 255, 0.01);
-            border: 1px solid var(--border);
-            border-radius: 12px;
-            padding: 1.5rem;
+        .section::before {
+            top: -1px;
+            left: -1px;
+            border-right: none;
+            border-bottom: none;
+            border-top-left-radius: 20px;
+        }
+
+        .section::after {
+            bottom: -1px;
+            right: -1px;
+            border-left: none;
+            border-top: none;
+            border-bottom-right-radius: 20px;
+        }
+
+        .section:hover::before,
+        .section:hover::after {
+            opacity: 0.3;
+            width: 120px;
+            height: 120px;
+        }
+
+        .section:hover {
+            border-color: rgba(0, 217, 255, 0.2);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3), 0 0 40px rgba(0, 217, 255, 0.05);
+        }
+
+        .section-header {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            margin-bottom: 2rem;
+            padding-bottom: 1rem;
+            border-bottom: 1px solid var(--border);
+            position: relative;
+        }
+
+        .section-header::after {
+            content: '';
+            position: absolute;
+            bottom: -1px;
+            left: 0;
+            width: 0;
+            height: 2px;
+            background: var(--accent-cyan);
+            box-shadow: 0 0 10px var(--glow-cyan);
+            animation: expandWidth 1s ease-out 0.8s forwards;
+        }
+
+        .section-icon {
+            width: 40px;
+            height: 40px;
+            background: rgba(0, 217, 255, 0.1);
+            border: 1px solid rgba(0, 217, 255, 0.3);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.25rem;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .section-icon::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: var(--accent-cyan);
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .section:hover .section-icon::before {
+            opacity: 0.2;
+        }
+
+        .section-icon span {
+            position: relative;
+            z-index: 1;
+        }
+
+        .section-title {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--text-primary);
+            letter-spacing: -0.02em;
+        }
+
+        /* Form Elements */
+        .form-group {
             margin-bottom: 1.5rem;
         }
 
-        .brief-title {
+        .label {
+            display: block;
+            font-size: 0.875rem;
+            font-weight: 600;
+            color: var(--text-secondary);
+            margin-bottom: 0.5rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .required {
+            color: var(--error);
+        }
+
+        input[type="text"],
+        textarea,
+        select {
+            width: 100%;
+            padding: 1rem 1.25rem;
+            background: rgba(0, 0, 0, 0.4);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            color: var(--text-primary);
+            font-family: 'Inter', sans-serif;
+            font-size: 0.9375rem;
+            transition: all 0.3s ease;
+            outline: none;
+            appearance: none;
+            -webkit-appearance: none;
+            -moz-appearance: none;
+        }
+
+        /* SELECT DROPDOWN FIX */
+        select {
+            background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2300d9ff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
+            background-repeat: no-repeat;
+            background-position: right 1rem center;
+            background-size: 1.25em;
+            padding-right: 3rem;
+        }
+
+        select option {
+            background: #1a1a1a;
+            color: var(--text-primary);
+            padding: 0.75rem;
+        }
+
+        input[type="text"]:focus,
+        textarea:focus,
+        select:focus {
+            border-color: var(--accent-cyan);
+            background: rgba(0, 0, 0, 0.6);
+            box-shadow: 
+                0 0 0 3px rgba(0, 217, 255, 0.1),
+                0 0 20px rgba(0, 217, 255, 0.05);
+        }
+
+        textarea {
+            resize: vertical;
+            min-height: 100px;
+        }
+
+        input::placeholder,
+        textarea::placeholder {
+            color: var(--text-muted);
+        }
+
+        /* Method Grid */
+        .method-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1rem;
+            margin-top: 1rem;
+        }
+
+        .method-card {
+            padding: 1.5rem;
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .method-card::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(135deg, rgba(0, 217, 255, 0.1), transparent);
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .method-card.active {
+            border-color: var(--accent-cyan);
+            background: rgba(0, 217, 255, 0.05);
+            box-shadow: 
+                0 0 20px rgba(0, 217, 255, 0.2),
+                inset 0 0 20px rgba(0, 217, 255, 0.05);
+        }
+
+        .method-card.active::before {
+            opacity: 1;
+        }
+
+        .method-card.active::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 2px;
+            background: var(--accent-cyan);
+            box-shadow: 0 0 10px var(--glow-cyan);
+        }
+
+        .method-card:not(.active):hover {
+            border-color: rgba(0, 217, 255, 0.3);
+            transform: translateY(-2px);
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+        }
+
+        .method-card.disabled {
+            opacity: 0.3;
+            cursor: not-allowed;
+        }
+
+        .method-name {
+            font-weight: 700;
+            font-size: 1.125rem;
+            color: var(--text-primary);
+            margin-bottom: 0.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .method-desc {
+            font-size: 0.875rem;
+            color: var(--text-muted);
+            line-height: 1.5;
+        }
+
+        .help-badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 18px;
+            height: 18px;
+            background: var(--accent-cyan);
+            color: var(--bg-darker);
+            border-radius: 50%;
+            font-size: 0.625rem;
+            font-weight: 900;
+            font-family: 'JetBrains Mono', monospace;
+            cursor: help;
+            box-shadow: 0 0 10px var(--glow-cyan);
+        }
+
+        /* Alert Box */
+        .alert {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            padding: 1rem 1.25rem;
+            background: rgba(255, 170, 0, 0.05);
+            border: 1px solid rgba(255, 170, 0, 0.2);
+            border-left: 3px solid var(--warning);
+            border-radius: 12px;
+            font-size: 0.875rem;
+            color: var(--warning);
+            font-weight: 600;
+            margin-bottom: 1.5rem;
+        }
+
+        .alert-icon {
+            font-size: 1.25rem;
+            animation: pulse 2s ease-in-out infinite;
+        }
+
+        /* Task List */
+        .task-list {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .task-card {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid var(--border);
+            border-left: 3px solid var(--accent-cyan);
+            border-radius: 12px;
+            padding: 1.5rem;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .task-card::before {
+            content: '';
+            position: absolute;
+            left: -3px;
+            top: 0;
+            width: 3px;
+            height: 0;
+            background: linear-gradient(180deg, var(--accent-cyan), var(--accent-cyan-dim));
+            transition: height 0.3s ease;
+        }
+
+        .task-card:hover {
+            border-color: rgba(0, 217, 255, 0.3);
+            transform: translateX(4px);
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+        }
+
+        .task-card:hover::before {
+            height: 100%;
+        }
+
+        .task-number {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.75rem;
+            font-weight: 700;
+            color: var(--accent-cyan);
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            margin-bottom: 1rem;
+        }
+
+        .input-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+        }
+
+        /* Button Group */
+        .button-group {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            margin-top: 1.5rem;
+        }
+
+        .btn {
+            padding: 1rem 2rem;
+            border: none;
+            border-radius: 12px;
+            font-weight: 700;
+            font-size: 0.9375rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.75rem;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.05);
+            color: var(--text-primary);
+            border: 1px solid var(--border);
+        }
+
+        .btn-secondary:hover:not(:disabled) {
+            background: rgba(255, 255, 255, 0.08);
+            border-color: rgba(0, 217, 255, 0.3);
+            transform: translateY(-2px);
+        }
+
+        .btn:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+
+        .counter {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.875rem;
+            color: var(--text-muted);
+            font-weight: 700;
+        }
+
+        /* Primary Action Button */
+        .btn-primary {
+            width: 100%;
+            padding: 1.25rem 2rem;
+            background: linear-gradient(135deg, var(--accent-cyan), var(--accent-cyan-dim));
+            border: none;
+            border-radius: 14px;
+            color: var(--bg-darker);
+            font-weight: 800;
+            font-size: 1.125rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.75rem;
+            position: relative;
+            overflow: hidden;
+            box-shadow: 
+                0 8px 32px rgba(0, 217, 255, 0.4),
+                0 0 40px rgba(0, 217, 255, 0.2),
+                inset 0 1px 0 rgba(255, 255, 255, 0.2);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .btn-primary::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+            transition: left 0.5s ease;
+        }
+
+        .btn-primary:hover::before {
+            left: 100%;
+        }
+
+        .btn-primary:hover:not(:disabled) {
+            transform: translateY(-3px);
+            box-shadow: 
+                0 12px 40px rgba(0, 217, 255, 0.5),
+                0 0 60px rgba(0, 217, 255, 0.3),
+                inset 0 1px 0 rgba(255, 255, 255, 0.3);
+        }
+
+        .btn-primary:active {
+            transform: translateY(-1px);
+        }
+
+        .btn-primary:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .btn-primary span {
+            position: relative;
+            z-index: 1;
+        }
+
+        /* Results Section */
+        .result-empty {
+            text-align: center;
+            padding: 4rem 2rem;
+            color: var(--text-muted);
+        }
+
+        .result-icon {
+            font-size: 4rem;
+            margin-bottom: 1rem;
+            opacity: 0.3;
+        }
+
+        .loading {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 4rem 2rem;
+            gap: 2rem;
+        }
+
+        .spinner {
+            width: 60px;
+            height: 60px;
+            border: 3px solid rgba(0, 217, 255, 0.1);
+            border-top-color: var(--accent-cyan);
+            border-radius: 50%;
+            animation: rotate 1s linear infinite;
+            box-shadow: 0 0 30px var(--glow-cyan);
+            position: relative;
+        }
+
+        .spinner::after {
+            content: '';
+            position: absolute;
+            inset: 10px;
+            border: 2px solid rgba(0, 217, 255, 0.2);
+            border-top-color: var(--accent-cyan);
+            border-radius: 50%;
+            animation: rotate 1.5s linear infinite reverse;
+        }
+
+        .loading-text {
+            font-weight: 600;
+            color: var(--text-secondary);
+        }
+
+        /* Result Header */
+        .result-header {
+            background: rgba(0, 217, 255, 0.05);
+            border: 1px solid rgba(0, 217, 255, 0.2);
+            border-radius: 12px;
+            padding: 2rem;
+            margin-bottom: 2rem;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .result-header::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 2px;
+            background: var(--accent-cyan);
+            box-shadow: 0 0 10px var(--glow-cyan);
+        }
+
+        .result-message {
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: var(--accent-cyan);
+            margin-bottom: 0.75rem;
+        }
+
+        .result-summary {
+            color: var(--text-secondary);
+            line-height: 1.7;
+            margin-bottom: 1rem;
+        }
+
+        .stat-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem 1rem;
+            background: rgba(0, 255, 136, 0.1);
+            border: 1px solid rgba(0, 255, 136, 0.2);
+            border-radius: 8px;
+            color: var(--success);
+            font-weight: 700;
+            font-size: 0.875rem;
+        }
+
+        /* Order Table */
+        .order-table {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 0;
+            margin-bottom: 2rem;
+            background: rgba(255, 255, 255, 0.02);
+            border-radius: 12px;
+            overflow: hidden;
+            border: 1px solid var(--border);
+        }
+
+        .order-table thead {
+            background: rgba(0, 217, 255, 0.05);
+        }
+
+        .order-table th {
+            padding: 1rem 1.25rem;
+            text-align: left;
+            font-weight: 700;
+            color: var(--accent-cyan);
+            font-size: 0.8125rem;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .order-table td {
+            padding: 1rem 1.25rem;
+            border-top: 1px solid var(--border);
+            color: var(--text-secondary);
+        }
+
+        .order-table tbody tr {
+            transition: background 0.3s ease;
+        }
+
+        .order-table tbody tr:hover {
+            background: rgba(0, 217, 255, 0.03);
+        }
+
+        /* Ranked Items */
+        .ranked-list {
+            display: flex;
+            flex-direction: column;
+            gap: 1.25rem;
+        }
+
+        .ranked-item {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid var(--border);
+            border-left: 4px solid var(--accent-cyan);
+            border-radius: 12px;
+            padding: 1.75rem;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .ranked-item::before {
+            content: '';
+            position: absolute;
+            left: -4px;
+            top: 0;
+            width: 4px;
+            height: 0;
+            background: linear-gradient(180deg, var(--accent-cyan), var(--accent-cyan-dim));
+            transition: height 0.3s ease;
+            box-shadow: 0 0 10px var(--glow-cyan);
+        }
+
+        .ranked-item:hover {
+            border-color: rgba(0, 217, 255, 0.3);
+            background: rgba(255, 255, 255, 0.04);
+            transform: translateX(6px);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+        }
+
+        .ranked-item:hover::before {
+            height: 100%;
+        }
+
+        .ranked-header {
+            display: flex;
+            align-items: center;
+            gap: 1.25rem;
+            margin-bottom: 1.25rem;
+        }
+
+        .rank-number {
+            font-size: 3rem;
+            font-weight: 800;
+            color: var(--accent-cyan);
+            line-height: 1;
+            min-width: 60px;
+            text-shadow: 0 0 20px var(--glow-cyan);
+        }
+
+        .rank-title {
+            font-weight: 700;
+            font-size: 1.25rem;
+            color: var(--text-primary);
+        }
+
+        .rank-explanation {
+            color: var(--text-secondary);
+            line-height: 1.7;
+            margin-bottom: 1.25rem;
+        }
+
+        .key-points {
+            list-style: none;
+            margin-bottom: 1.25rem;
+        }
+
+        .key-points li {
+            padding-left: 2rem;
+            position: relative;
+            margin-bottom: 0.75rem;
+            color: var(--text-secondary);
+            font-size: 0.9375rem;
+            line-height: 1.6;
+        }
+
+        .key-points li::before {
+            content: '→';
+            position: absolute;
+            left: 0;
             color: var(--accent-cyan);
             font-weight: 700;
-            margin-bottom: 1rem;
-            font-size: 1.1rem;
+            font-size: 1.25rem;
+        }
+
+        .rank-tip {
+            background: rgba(0, 217, 255, 0.05);
+            border-left: 3px solid var(--accent-cyan);
+            padding: 0.875rem 1.25rem;
+            border-radius: 8px;
+            font-size: 0.875rem;
+            color: var(--text-muted);
+            font-style: italic;
+            line-height: 1.6;
+        }
+
+        /* CalmAI specific styles */
+        .calmai-response {
+            background: rgba(0, 217, 255, 0.05);
+            border: 1px solid rgba(0, 217, 255, 0.2);
+            border-radius: 12px;
+            padding: 2rem;
+            line-height: 1.8;
+            color: var(--text-secondary);
+            font-size: 1.0625rem;
+        }
+
+        /* BriefAI specific styles */
+        .brief-section {
+            margin-bottom: 2rem;
+        }
+
+        .brief-title {
+            font-size: 1.125rem;
+            font-weight: 700;
+            color: var(--accent-cyan);
+            margin-bottom: 0.75rem;
         }
 
         .brief-content {
             color: var(--text-secondary);
-            white-space: pre-wrap;
             line-height: 1.7;
+            white-space: pre-line;
         }
 
         .brief-list {
             list-style: none;
+            margin-top: 0.75rem;
         }
 
         .brief-list li {
-            color: var(--text-secondary);
-            padding-left: 1.5rem;
-            margin-bottom: 0.75rem;
+            padding-left: 2rem;
             position: relative;
+            margin-bottom: 0.5rem;
+            color: var(--text-secondary);
         }
 
         .brief-list li::before {
@@ -807,6 +1148,7 @@
             left: 0;
             color: var(--accent-cyan);
             font-weight: 700;
+            font-size: 1.5rem;
         }
 
         /* Responsive */
@@ -819,26 +1161,40 @@
                 font-size: 3rem;
             }
 
-            .header {
-                padding: 2rem 0 1.5rem;
+            .module-description {
+                font-size: 1rem;
             }
 
-            .card {
+            .section {
                 padding: 1.5rem;
             }
 
-            .methods {
+            .method-grid {
                 grid-template-columns: 1fr;
             }
 
-            .table-row {
-                grid-template-columns: 60px 1fr;
+            .input-row {
+                grid-template-columns: 1fr;
+            }
+
+            .rank-number {
+                font-size: 2.5rem;
+            }
+
+            .module-tabs {
+                flex-direction: column;
+                width: 100%;
+            }
+
+            .module-tab {
+                width: 100%;
+                text-align: center;
             }
         }
     </style>
 </head>
 <body>
-    <!-- Background Effects -->
+    <!-- Particles and Effects -->
     <div class="particles">
         <div class="particle"></div>
         <div class="particle"></div>
@@ -855,117 +1211,242 @@
     </div>
 
     <div class="container">
+        <!-- Header -->
         <header class="header">
-            <div class="logo">
+            <h1 class="logo">
                 <span class="logo-text">Prioriz</span><span class="logo-ai">AI</span>
+            </h1>
+            <p class="module-description" id="moduleDescription">
+                Você escreve suas tarefas. Eu coloco na melhor ordem e explico de um jeito fácil.
+            </p>
+            <div class="privacy-badge">
+                <span class="privacy-icon">🔒</span>
+                <span>Privacidade 100% Garantida • Nada é Salvo</span>
             </div>
-            <p class="tagline">Organize suas tarefas com inteligência. Priorize o que importa e economize tempo.</p>
+            <div class="usage-limit">
+                <span class="usage-icon">⏱️</span>
+                <span>Limite: 3 gerações por dia</span>
+            </div>
         </header>
 
-        <div class="main-content">
-            <!-- Input Section -->
-            <div class="card">
-                <div class="module-tabs">
-                    <button class="module-tab active" data-module="priorizai">PriorizAI</button>
-                    <button class="module-tab" data-module="calmai">CalmAI</button>
-                    <button class="module-tab" data-module="briefai">BriefAI</button>
+        <!-- Module Tabs -->
+        <div class="module-tabs">
+            <button class="module-tab active" data-module="priorizai">
+                PriorizAI
+            </button>
+            <button class="module-tab" data-module="calmai">
+                CalmAI
+            </button>
+            <button class="module-tab" data-module="briefai">
+                BriefAI
+            </button>
+        </div>
+
+        <!-- Main Content -->
+        <div class="main-wrapper">
+            <!-- RESULTS SECTION - NO TOPO -->
+            <section class="section" id="resultsSection" style="display: none;">
+                <div class="section-header">
+                    <div class="section-icon">
+                        <span>📊</span>
+                    </div>
+                    <h2 class="section-title">Resultado</h2>
                 </div>
 
-                <div class="card-title">Entrada</div>
-                <p id="moduleDescription" class="result-summary" style="margin-bottom: 2rem;">
-                    Liste suas tarefas e eu vou te ajudar a priorizar.
-                </p>
+                <div id="resultsContainer">
+                    <div class="result-empty">
+                        <div class="result-icon">🤖</div>
+                        <p>Os resultados aparecerão aqui</p>
+                    </div>
+                </div>
+            </section>
 
-                <!-- MODULE: PriorizAI -->
-                <div class="module-content active" data-module="priorizai">
+            <!-- MODULE: PriorizAI -->
+            <div class="module-content active" data-module="priorizai">
+                <!-- User Info Section -->
+                <section class="section">
+                    <div class="section-header">
+                        <div class="section-icon">
+                            <span>👤</span>
+                        </div>
+                        <h2 class="section-title">Identificação</h2>
+                    </div>
                     <div class="form-group">
                         <label class="label">Seu nome <span class="required">*</span></label>
                         <input type="text" id="userName" placeholder="Ex.: Felipe Castelão" required>
                     </div>
+                </section>
 
-                    <div class="form-group">
-                        <label class="label">Método de priorização</label>
-                        <div class="methods">
-                            <div class="method-card active" data-method="impact_effort">
-                                <div class="method-title">Impacto x Esforço</div>
-                                <div class="method-desc">Faça primeiro o que importa e é rápido</div>
+                <!-- Method Section -->
+                <section class="section">
+                    <div class="section-header">
+                        <div class="section-icon">
+                            <span>⚡</span>
+                        </div>
+                        <h2 class="section-title">Método de Priorização</h2>
+                    </div>
+                    <div class="method-grid">
+                        <div class="method-card active" data-method="impact_effort">
+                            <div class="method-name">
+                                Impacto e Esforço
+                                <span class="help-badge" title="Prioriza o que é mais importante e leva menos tempo.">?</span>
                             </div>
-                            <div class="method-card disabled">
-                                <div class="method-title">Urgência x Importância</div>
-                                <div class="method-desc">Em breve</div>
+                            <div class="method-desc">Foco no que importa mais</div>
+                        </div>
+                        <div class="method-card disabled">
+                            <div class="method-name">
+                                RICE
+                                <span class="help-badge" title="Método técnico. Em breve.">?</span>
                             </div>
+                            <div class="method-desc">Em breve</div>
+                        </div>
+                        <div class="method-card disabled">
+                            <div class="method-name">
+                                MoSCoW
+                                <span class="help-badge" title="Categorização por necessidade. Em breve.">?</span>
+                            </div>
+                            <div class="method-desc">Em breve</div>
+                        </div>
+                        <div class="method-card disabled">
+                            <div class="method-name">
+                                GUT
+                                <span class="help-badge" title="Análise de gravidade. Em breve.">?</span>
+                            </div>
+                            <div class="method-desc">Em breve</div>
                         </div>
                     </div>
+                </section>
 
-                    <div id="taskList"></div>
-
-                    <button class="btn btn-secondary" id="addTaskBtn">+ Adicionar tarefa</button>
-                    <div class="task-counter">
-                        Tarefas: <span id="taskCounter">3/10</span>
+                <!-- Tasks Section -->
+                <section class="section">
+                    <div class="section-header">
+                        <div class="section-icon">
+                            <span>📋</span>
+                        </div>
+                        <h2 class="section-title">Suas Tarefas</h2>
                     </div>
 
-                    <button class="btn" id="priorizaiProcessBtn" style="margin-top: 2rem;">
-                        Gerar Priorização
+                    <div class="alert">
+                        <span class="alert-icon">⚡</span>
+                        <span>Preencha no mínimo 3 tarefas completas para priorizar</span>
+                    </div>
+
+                    <div class="task-list" id="taskList">
+                        <!-- Tasks will be added here -->
+                    </div>
+
+                    <div class="button-group">
+                        <button class="btn btn-secondary" id="addTaskBtn">
+                            <span>➕ Adicionar tarefa</span>
+                        </button>
+                        <span class="counter" id="taskCounter">3/10</span>
+                    </div>
+
+                    <button class="btn-primary" id="priorizaiProcessBtn" style="margin-top: 2rem;">
+                        <span>✨</span>
+                        <span>Priorizar com IA</span>
                     </button>
-                </div>
-
-                <!-- MODULE: CalmAI -->
-                <div class="module-content" data-module="calmai">
-                    <div class="form-group">
-                        <label class="label">Seu nome <span class="required">*</span></label>
-                        <input type="text" id="calmaiUserName" placeholder="Ex.: Felipe Castelão" required>
-                    </div>
-
-                    <div class="form-group">
-                        <label class="label">Conte seu problema <span class="required">*</span></label>
-                        <textarea id="calmaiText" class="calmai-textarea" placeholder="Ex.: Estou me sentindo pressionado porque tenho muitas coisas pra fazer e não consigo me organizar..." required></textarea>
-                    </div>
-
-                    <button class="btn" id="calmaiProcessBtn">
-                        Falar com a Diva do Caos
-                    </button>
-                </div>
-
-                <!-- MODULE: BriefAI -->
-                <div class="module-content" data-module="briefai">
-                    <div class="form-group">
-                        <label class="label">Seu nome <span class="required">*</span></label>
-                        <input type="text" id="briefaiUserName" placeholder="Ex.: Felipe Castelão" required>
-                    </div>
-
-                    <div class="form-group">
-                        <label class="label">Texto para transformar em briefing <span class="required">*</span></label>
-                        <textarea id="briefaiText" class="calmai-textarea" placeholder="Cole aqui um texto longo, reunião, contexto de projeto, ou qualquer conteúdo que você queira transformar em briefing..." required></textarea>
-                    </div>
-
-                    <button class="btn" id="briefaiProcessBtn">
-                        Gerar Briefing
-                    </button>
-                </div>
+                </section>
             </div>
 
-            <!-- Results Section -->
-            <div class="card results-section" id="resultsSection">
-                <div class="card-title">Resultado</div>
-                <div id="resultsContainer" class="results-container"></div>
+            <!-- MODULE: CalmAI -->
+            <div class="module-content" data-module="calmai">
+                <section class="section">
+                    <div class="section-header">
+                        <div class="section-icon">
+                            <span>👤</span>
+                        </div>
+                        <h2 class="section-title">Identificação</h2>
+                    </div>
+                    <div class="form-group">
+                        <label class="label">Seu nome <span class="required">*</span></label>
+                        <input type="text" id="calmaiUserName" placeholder="Ex.: Maria Silva" required>
+                    </div>
+                </section>
+
+                <section class="section">
+                    <div class="section-header">
+                        <div class="section-icon">
+                            <span>💭</span>
+                        </div>
+                        <h2 class="section-title">O que está te incomodando?</h2>
+                    </div>
+
+                    <div class="alert">
+                        <span class="alert-icon">💡</span>
+                        <span>Conte seu problema. A Diva do Caos vai te provocar e ajudar!</span>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="label">Desabafe aqui <span class="required">*</span></label>
+                        <textarea id="calmaiText" placeholder="Ex.: Estou sobrecarregado com o trabalho e não consigo me organizar..." style="min-height: 150px;" required></textarea>
+                    </div>
+
+                    <button class="btn-primary" id="calmaiProcessBtn" style="margin-top: 1.5rem;">
+                        <span>💭</span>
+                        <span>Conversar com a Diva</span>
+                    </button>
+                </section>
+            </div>
+
+            <!-- MODULE: BriefAI -->
+            <div class="module-content" data-module="briefai">
+                <section class="section">
+                    <div class="section-header">
+                        <div class="section-icon">
+                            <span>👤</span>
+                        </div>
+                        <h2 class="section-title">Identificação</h2>
+                    </div>
+                    <div class="form-group">
+                        <label class="label">Seu nome <span class="required">*</span></label>
+                        <input type="text" id="briefaiUserName" placeholder="Ex.: João Costa" required>
+                    </div>
+                </section>
+
+                <section class="section">
+                    <div class="section-header">
+                        <div class="section-icon">
+                            <span>📄</span>
+                        </div>
+                        <h2 class="section-title">Seu Contexto ou Situação</h2>
+                    </div>
+
+                    <div class="alert">
+                        <span class="alert-icon">📝</span>
+                        <span>Cole ou escreva o texto que precisa de um briefing estruturado</span>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="label">Texto para análise <span class="required">*</span></label>
+                        <textarea id="briefaiText" placeholder="Ex.: Estou montando um projeto de e-commerce para vender produtos artesanais. Preciso definir público-alvo, plataforma, estratégia de marketing..." style="min-height: 200px;" required></textarea>
+                    </div>
+
+                    <button class="btn-primary" id="briefaiProcessBtn" style="margin-top: 1.5rem;">
+                        <span>📄</span>
+                        <span>Gerar Briefing</span>
+                    </button>
+                </section>
             </div>
         </div>
     </div>
 
     <script>
-        // Configuration
+        // Config
         const WORKER_BASE_URL = "https://priorizai.felipelcas.workers.dev";
-        const MAX_TASKS = 10;
-        let taskCount = 3;
-        let currentModule = 'priorizai';
 
+        // Module descriptions
         const MODULE_DESCRIPTIONS = {
-            priorizai: "Liste suas tarefas e eu vou te ajudar a priorizar.",
-            calmai: "Conte seu problema e receba um conselho provocador da Diva do Caos.",
-            briefai: "Cole um texto longo e transforme em um briefing estruturado."
+            priorizai: "Você escreve suas tarefas. Eu coloco na melhor ordem e explico de um jeito fácil.",
+            calmai: "Conte seu problema. A Diva do Caos vai te provocar, cutucar e te ajudar a ver de outro jeito.",
+            briefai: "Cole qualquer texto bagunçado. Eu transformo em um briefing organizado e objetivo."
         };
 
-        // Utility functions
+        // Current module state
+        let currentModule = 'priorizai';
+        let taskCount = 3;
+        const MAX_TASKS = 10;
+
         function normalizeBaseUrl(url) {
             if (!url || typeof url !== 'string') return '';
             url = url.trim();
@@ -1222,51 +1703,60 @@
 
         // Display results
         function showLoading() {
-            document.getElementById('resultsSection').style.display = 'block';
-            const container = document.getElementById('resultsContainer');
-            container.innerHTML = `
+            const section = document.getElementById('resultsSection');
+            section.style.display = 'block';
+            
+            document.getElementById('resultsContainer').innerHTML = `
                 <div class="loading">
                     <div class="spinner"></div>
-                    <div class="loading-text">Processando...</div>
+                    <div class="loading-text">Processando com IA...</div>
                 </div>
             `;
+
+            // Scroll to results
+            section.scrollIntoView({ behavior: 'smooth', block: 'start' });
         }
 
         function showError(message) {
-            document.getElementById('resultsSection').style.display = 'block';
             document.getElementById('resultsContainer').innerHTML = `
-                <div class="error">${escapeHtml(message)}</div>
+                <div class="result-empty">
+                    <div class="result-icon">❌</div>
+                    <p>${escapeHtml(message) || 'Erro ao processar. Tente novamente.'}</p>
+                </div>
             `;
         }
 
         function displayPriorizAIResults(data) {
             const container = document.getElementById('resultsContainer');
-
-            const ordered = Array.isArray(data.ordered_tasks) ? data.ordered_tasks : [];
-            if (!ordered.length) {
-                showError('Resposta inválida da IA.');
-                return;
-            }
+            
+            const orderRows = (data.ordered_tasks || []).map(t => `
+                <tr>
+                    <td style="color: var(--accent-cyan); font-weight: 700;">${t.position}</td>
+                    <td>${escapeHtml(t.task_title)}</td>
+                </tr>
+            `).join('');
 
             const orderTableHTML = `
-                <div class="order-table">
-                    <div class="table-header">Ordem de execução</div>
-                    ${ordered.map(task => `
-                        <div class="table-row">
-                            <div class="table-rank">#${task.position}</div>
-                            <div class="table-task">${escapeHtml(task.task_title)}</div>
-                        </div>
-                    `).join('')}
-                </div>
+                <table class="order-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 80px;">Ordem</th>
+                            <th>Tarefa</th>
+                        </tr>
+                    </thead>
+                    <tbody>${orderRows || '<tr><td colspan="2">Sem itens</td></tr>'}</tbody>
+                </table>
             `;
 
-            const rankedListHTML = ordered.map(task => `
-                <div class="ranked-task">
-                    <div class="rank-badge">${task.position}</div>
-                    <div class="rank-title">${escapeHtml(task.task_title)}</div>
+            const rankedListHTML = (data.ordered_tasks || []).map(task => `
+                <div class="ranked-item">
+                    <div class="ranked-header">
+                        <div class="rank-number">${task.position}</div>
+                        <div class="rank-title">${escapeHtml(task.task_title)}</div>
+                    </div>
                     ${task.explanation ? `<div class="rank-explanation">${escapeHtml(task.explanation)}</div>` : ''}
                     ${Array.isArray(task.key_points) && task.key_points.length ? `
-                        <ul class="rank-points">
+                        <ul class="key-points">
                             ${task.key_points.map(p => `<li>${escapeHtml(p)}</li>`).join('')}
                         </ul>
                     ` : ''}
