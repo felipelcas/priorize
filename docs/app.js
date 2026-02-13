@@ -1,66 +1,119 @@
-// 1) COLE A URL DO SEU WORKER AQUI (a rota é /prioritize)
+// ===============================
+// CONFIG
+// ===============================
+// Cole a URL do seu Worker (SEM barra no final).
+// Ex.: https://priorizai.felipelcas.workers.dev
 const WORKER_BASE_URL = "https://priorizai.felipelcas.workers.dev";
-const API_URL = `${WORKER_BASE_URL.replace(/\/$/, "")}/prioritize`;
 
-(function injectOrderTableStyles() {
-  const style = document.createElement("style");
-  style.textContent = `
-    .order-table-wrap{
-      background: rgba(15, 23, 42, 0.45);
-      border: 1px solid rgba(148, 163, 184, 0.18);
-      border-radius: 16px;
-      padding: 1rem;
-      margin-bottom: 1rem;
-    }
-    .order-table-title{
-      font-weight: 800;
-      margin-bottom: 0.75rem;
-      color: var(--text-primary);
-      font-family: 'Outfit', sans-serif;
-    }
-    .order-table{
-      width: 100%;
-      border-collapse: collapse;
-      overflow: hidden;
-      border-radius: 12px;
-    }
-    .order-table th, .order-table td{
-      text-align: left;
-      padding: 0.75rem 0.75rem;
-      border-bottom: 1px solid rgba(148, 163, 184, 0.12);
-      color: var(--text-secondary);
-      font-size: 0.95rem;
-    }
-    .order-table th{
-      color: var(--text-primary);
-      font-weight: 800;
-    }
-    .order-pill{
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      width: 28px;
-      height: 28px;
-      border-radius: 10px;
-      background: rgba(6, 182, 212, 0.12);
-      border: 1px solid rgba(6, 182, 212, 0.25);
-      color: var(--text-primary);
-      font-weight: 800;
-    }
-  `;
-  document.head.appendChild(style);
-})();
+function normalizeBaseUrl(url) {
+  if (!url || typeof url !== "string") return "";
+  let u = url.trim();
+  while (u.endsWith("/")) u = u.slice(0, -1);
+  return u;
+}
 
-// State
+const API_PRIORITIZE = `${normalizeBaseUrl(WORKER_BASE_URL)}/prioritize`;
+const API_CALMAI = `${normalizeBaseUrl(WORKER_BASE_URL)}/calmai`;
+
+// ===============================
+// SECURITY: anti "injeção SQL" (validação simples)
+// ===============================
+// Observação: não existe SQL aqui, mas você pediu bloqueio.
+// Eu faço uma validação bem conservadora, no front.
+function looksLikeSqlInjection(text) {
+  const t = String(text || "").toLowerCase();
+
+  // padrões típicos
+  const patterns = [
+    "--",
+    "/*",
+    "*/",
+    ";",
+    " or ",
+    " and ",
+    " union ",
+    " select ",
+    " insert ",
+    " update ",
+    " delete ",
+    " drop ",
+    " alter ",
+    " create ",
+    " truncate ",
+    " xp_",
+    "1=1",
+    "' or",
+    "\" or",
+  ];
+
+  return patterns.some((p) => t.includes(p));
+}
+
+function requireSafeText(label, value, { maxLen = 500, required = true } = {}) {
+  const v = String(value || "").trim();
+
+  if (required && !v) {
+    alert(`Preencha: ${label}.`);
+    return null;
+  }
+
+  if (v.length > maxLen) {
+    alert(`${label}: limite de ${maxLen} caracteres.`);
+    return null;
+  }
+
+  if (looksLikeSqlInjection(v)) {
+    alert(
+      `${label}: achei algo que parece código. Remova coisas como ponto e vírgula, "--", ou palavras tipo SELECT / DROP / UNION.`
+    );
+    return null;
+  }
+
+  return v;
+}
+
+function escapeHtml(str) {
+  return String(str || "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+// ===============================
+// TABS
+// ===============================
+function setActiveTab(tabName) {
+  document.querySelectorAll(".tab-btn[data-tab]").forEach((btn) => {
+    btn.classList.toggle("active", btn.dataset.tab === tabName);
+  });
+
+  const viewPri = document.getElementById("viewPriorizai");
+  const viewCalm = document.getElementById("viewCalmai");
+
+  if (viewPri) viewPri.style.display = tabName === "priorizai" ? "" : "none";
+  if (viewCalm) viewCalm.style.display = tabName === "calmai" ? "" : "none";
+
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function initTabs() {
+  document.querySelectorAll(".tab-btn[data-tab]").forEach((btn) => {
+    btn.addEventListener("click", () => setActiveTab(btn.dataset.tab));
+  });
+}
+
+// ===============================
+// PRIORIZAI
+// ===============================
 let taskCount = 3;
 const MAX_TASKS = 10;
 
-// Helpers
 function getActiveMethod() {
-  const active = document.querySelector(".method-card.active");
+  const active = document.querySelector("#viewPriorizai .method-card.active");
   const method = active?.dataset?.method || "impact";
 
-  // No HTML atual o data-method do 1o é "impact"
   if (method === "impact") return "IMPACT_EFFORT";
   if (method === "rice") return "RICE";
   if (method === "moscow") return "MOSCOW";
@@ -68,16 +121,15 @@ function getActiveMethod() {
   return "IMPACT_EFFORT";
 }
 
-// Add task element
 function addTaskElement(number) {
   const container = document.getElementById("tasksContainer");
+  if (!container) return;
+
   const taskItem = document.createElement("div");
   taskItem.className = "task-item";
 
   taskItem.innerHTML = `
-    <div class="task-header">
-      <h3 class="task-number">Tarefa ${number}</h3>
-    </div>
+    <div class="task-header">Tarefa ${number}</div>
 
     <div class="form-group">
       <label>O que você vai fazer <span class="required">*</span></label>
@@ -119,71 +171,82 @@ function addTaskElement(number) {
       </div>
     </div>
   `;
+
   container.appendChild(taskItem);
 }
 
-// Update task counter
 function updateTaskCounter() {
-  document.getElementById("taskCounter").textContent = `${taskCount}/${MAX_TASKS}`;
-  document.getElementById("addTaskBtn").disabled = taskCount >= MAX_TASKS;
+  const counter = document.getElementById("taskCounter");
+  const btn = document.getElementById("addTaskBtn");
+  if (counter) counter.textContent = `${taskCount}/${MAX_TASKS}`;
+  if (btn) btn.disabled = taskCount >= MAX_TASKS;
 }
 
-// Initialize tasks
 function initializeTasks() {
   const container = document.getElementById("tasksContainer");
+  if (!container) return;
   container.innerHTML = "";
   for (let i = 1; i <= taskCount; i++) addTaskElement(i);
   updateTaskCounter();
 }
 
-// Validate form
-function validateForm() {
-  const userName = document.getElementById("userName").value.trim();
-  if (!userName) {
-    alert("Por favor, preencha seu nome.");
+function validatePriorizaiForm() {
+  const base = normalizeBaseUrl(WORKER_BASE_URL);
+  if (!base || !base.startsWith("https://")) {
+    alert("Configure o WORKER_BASE_URL com https e sem barra no final.");
     return false;
   }
 
-  const tasks = Array.from(document.querySelectorAll(".task-item"));
-  const completeTasks = tasks.filter((task) => {
-    const title = task.querySelector(".task-title").value.trim();
-    const desc = task.querySelector(".task-desc").value.trim();
+  const rawName = document.getElementById("userName")?.value || "";
+  const userName = requireSafeText("Seu nome", rawName, { maxLen: 60, required: true });
+  if (!userName) return false;
+
+  const tasks = Array.from(document.querySelectorAll("#viewPriorizai .task-item"));
+
+  const complete = tasks.filter((task) => {
+    const title = task.querySelector(".task-title")?.value?.trim() || "";
+    const desc = task.querySelector(".task-desc")?.value?.trim() || "";
     return title && desc;
   });
 
-  if (completeTasks.length < 3) {
-    alert("Por favor, preencha no mínimo 3 tarefas completas (título e descrição).");
+  if (complete.length < 3) {
+    alert("Preencha no mínimo 3 tarefas completas (título e descrição).");
     return false;
   }
 
-  if (!WORKER_BASE_URL || WORKER_BASE_URL.includes("COLE_AQUI")) {
-    alert("Falta configurar a URL do Worker no app.js.");
-    return false;
+  // validação anti-injeção em tarefas
+  for (const task of complete) {
+    const title = requireSafeText("Título da tarefa", task.querySelector(".task-title")?.value, { maxLen: 100, required: true });
+    if (!title) return false;
+
+    const desc = requireSafeText("Descrição da tarefa", task.querySelector(".task-desc")?.value, { maxLen: 400, required: true });
+    if (!desc) return false;
   }
 
   return true;
 }
 
-// Collect form data
-function collectFormData() {
-  const userName = document.getElementById("userName").value.trim();
+function collectPriorizaiData() {
+  const rawName = document.getElementById("userName")?.value || "";
+  const userName = String(rawName).trim();
   const method = getActiveMethod();
 
-  const tasks = Array.from(document.querySelectorAll(".task-item"))
+  const tasks = Array.from(document.querySelectorAll("#viewPriorizai .task-item"))
     .map((task) => ({
-      title: task.querySelector(".task-title").value.trim(),
-      description: task.querySelector(".task-desc").value.trim(),
-      importance: parseInt(task.querySelector(".task-importance").value, 10),
-      time: parseInt(task.querySelector(".task-time").value, 10),
+      title: (task.querySelector(".task-title")?.value || "").trim(),
+      description: (task.querySelector(".task-desc")?.value || "").trim(),
+      importance: parseInt(task.querySelector(".task-importance")?.value || "3", 10),
+      time: parseInt(task.querySelector(".task-time")?.value || "2", 10),
     }))
-    .filter((task) => task.title && task.description);
+    .filter((t) => t.title && t.description);
 
   return { userName, method, tasks };
 }
 
-// Show loading state
-function showLoading() {
+function showPriorizaiLoading() {
   const container = document.getElementById("resultsContainer");
+  if (!container) return;
+
   container.innerHTML = `
     <div class="loading">
       <div class="spinner"></div>
@@ -192,31 +255,35 @@ function showLoading() {
   `;
 }
 
-// Real API call (Cloudflare Worker)
-async function prioritizeTasks(data) {
-  const resp = await fetch(API_URL, {
+function showPriorizaiError(message) {
+  const container = document.getElementById("resultsContainer");
+  if (!container) return;
+
+  container.innerHTML = `
+    <div class="result-empty">
+      <div class="result-empty-icon">❌</div>
+      <p>${escapeHtml(message || "Ops. Algo deu errado.")}</p>
+    </div>
+  `;
+}
+
+async function callApi(url, payload) {
+  const resp = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      userName: data.userName,
-      method: data.method,
-      tasks: data.tasks,
-    }),
+    body: JSON.stringify(payload),
   });
 
-  let json = {};
-  try {
-    json = await resp.json();
-  } catch {
-    json = {};
-  }
+  const text = await resp.text();
+  let json = null;
+  try { json = JSON.parse(text); } catch { json = null; }
 
   if (!resp.ok) {
-    const msg = json?.error || "Ops. Falha ao priorizar.";
-    throw new Error(msg);
+    const msg = (json && (json.error || json.message)) ? (json.error || json.message) : text;
+    throw new Error(msg || `Erro HTTP ${resp.status}`);
   }
 
-  return json;
+  return json || {};
 }
 
 function buildOrderTable(rankedTasks) {
@@ -224,7 +291,7 @@ function buildOrderTable(rankedTasks) {
     .map(
       (t) => `
       <tr>
-        <td><span class="order-pill">${t.position}</span></td>
+        <td style="color: var(--accent-primary); font-weight: 800;">${t.position}</td>
         <td>${escapeHtml(t.title)}</td>
       </tr>
     `
@@ -232,37 +299,48 @@ function buildOrderTable(rankedTasks) {
     .join("");
 
   return `
-    <div class="order-table-wrap">
-      <div class="order-table-title">Ordem sugerida</div>
-      <table class="order-table">
-        <thead>
-          <tr>
-            <th style="width: 72px;">Ordem</th>
-            <th>Tarefa</th>
-          </tr>
-        </thead>
-        <tbody>${rows}</tbody>
-      </table>
-    </div>
+    <table class="order-table">
+      <thead>
+        <tr>
+          <th style="width: 90px;">Ordem</th>
+          <th>Tarefa</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rows || `<tr><td colspan="2">Sem itens para mostrar.</td></tr>`}
+      </tbody>
+    </table>
   `;
 }
 
-function escapeHtml(str) {
-  return String(str || "")
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
+function normalizePriorResults(raw) {
+  const friendlyMessage = raw.friendlyMessage ?? raw.friendly_message ?? "";
+  const summary = raw.summary ?? "";
+  const estimatedTimeSaved =
+    raw.estimatedTimeSaved ??
+    raw.estimated_time_saved_percent ??
+    raw.estimatedTimeSavedPercent ??
+    0;
+
+  const list = raw.rankedTasks ?? raw.ordered_tasks ?? raw.orderedTasks ?? [];
+  const rankedTasks = (Array.isArray(list) ? list : []).map((t, idx) => ({
+    position: t.position ?? (idx + 1),
+    title: t.title ?? t.task_title ?? t.taskTitle ?? "",
+    explanation: t.explanation ?? "",
+    keyPoints: t.keyPoints ?? t.key_points ?? [],
+    tip: t.tip ?? "",
+  }));
+
+  return { friendlyMessage, summary, estimatedTimeSaved, rankedTasks };
 }
 
-// Display results
-function displayResults(results) {
+function displayPriorizaiResults(raw) {
   const container = document.getElementById("resultsContainer");
+  if (!container) return;
 
-  const orderTableHTML = buildOrderTable(results.rankedTasks || []);
+  const results = normalizePriorResults(raw);
 
-  const rankedListHTML = (results.rankedTasks || [])
+  const rankedListHTML = results.rankedTasks
     .map(
       (task) => `
       <div class="ranked-item">
@@ -281,59 +359,157 @@ function displayResults(results) {
     .join("");
 
   container.innerHTML = `
-    ${orderTableHTML}
     <div class="result-header">
-      <div class="result-message">${escapeHtml(results.friendlyMessage || "")}</div>
+      <div class="result-message">${escapeHtml(results.friendlyMessage || "Aqui vai sua ordem de execução.")}</div>
       <div class="result-summary">${escapeHtml(results.summary || "")}</div>
       <div class="result-stat">📊 Tempo economizado estimado: ${Number(results.estimatedTimeSaved || 0)}%</div>
     </div>
+    ${buildOrderTable(results.rankedTasks)}
     <div class="ranked-list">${rankedListHTML}</div>
   `;
 
-  // Em telas menores, rola até o resultado.
   if (window.innerWidth <= 1024) {
     container.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 }
 
-// UI events
-document.getElementById("addTaskBtn").addEventListener("click", () => {
-  if (taskCount < MAX_TASKS) {
-    taskCount++;
-    addTaskElement(taskCount);
-    updateTaskCounter();
+function initPriorizai() {
+  const addBtn = document.getElementById("addTaskBtn");
+  const runBtn = document.getElementById("prioritizeBtn");
+
+  if (addBtn) {
+    addBtn.addEventListener("click", () => {
+      if (taskCount < MAX_TASKS) {
+        taskCount++;
+        addTaskElement(taskCount);
+        updateTaskCounter();
+      }
+    });
   }
-});
 
-document.getElementById("prioritizeBtn").addEventListener("click", async () => {
-  if (!validateForm()) return;
+  if (runBtn) {
+    runBtn.addEventListener("click", async () => {
+      if (!validatePriorizaiForm()) return;
 
-  window.scrollTo({ top: 0, behavior: "smooth" });
+      window.scrollTo({ top: 0, behavior: "smooth" });
 
-  const formData = collectFormData();
-  showLoading();
+      showPriorizaiLoading();
 
-  try {
-    const results = await prioritizeTasks(formData);
-    displayResults(results);
-  } catch (error) {
-    const msg = String(error?.message || "Ops. Algo deu errado.");
-    document.getElementById("resultsContainer").innerHTML = `
-      <div class="result-empty">
-        <div class="result-empty-icon">❌</div>
-        <p>${escapeHtml(msg)}</p>
-      </div>
-    `;
+      try {
+        const data = collectPriorizaiData();
+        const res = await callApi(API_PRIORITIZE, data);
+        displayPriorizaiResults(res);
+      } catch (err) {
+        showPriorizaiError(String(err?.message || "Erro na IA."));
+      }
+    });
   }
-});
 
-// Method card selection (visual only)
-document.querySelectorAll(".method-card:not(.disabled)").forEach((card) => {
-  card.addEventListener("click", () => {
-    document.querySelectorAll(".method-card").forEach((c) => c.classList.remove("active"));
-    card.classList.add("active");
+  document.querySelectorAll("#viewPriorizai .method-card:not(.disabled)").forEach((card) => {
+    card.addEventListener("click", () => {
+      document.querySelectorAll("#viewPriorizai .method-card").forEach((c) => c.classList.remove("active"));
+      card.classList.add("active");
+    });
   });
-});
 
-// Initialize
-initializeTasks();
+  initializeTasks();
+}
+
+// ===============================
+// CALMAI
+// ===============================
+function updateCalmCounter() {
+  const ta = document.getElementById("calmText");
+  const count = document.getElementById("calmCount");
+  if (!ta || !count) return;
+  count.textContent = String((ta.value || "").length);
+}
+
+function showCalmLoading() {
+  const container = document.getElementById("calmResultsContainer");
+  if (!container) return;
+
+  container.innerHTML = `
+    <div class="loading">
+      <div class="spinner"></div>
+      <div class="loading-text">A Diva do Caos está lendo isso... 💅</div>
+    </div>
+  `;
+}
+
+function showCalmError(message) {
+  const container = document.getElementById("calmResultsContainer");
+  if (!container) return;
+
+  container.innerHTML = `
+    <div class="result-empty">
+      <div class="result-empty-icon">❌</div>
+      <p>${escapeHtml(message || "Ops. Algo deu errado.")}</p>
+    </div>
+  `;
+}
+
+function displayCalmResult(raw) {
+  const container = document.getElementById("calmResultsContainer");
+  if (!container) return;
+
+  const reply = raw.reply ?? raw.message ?? raw.text ?? "";
+
+  container.innerHTML = `
+    <div class="result-header">
+      <div class="result-message">Diva do Caos</div>
+      <div class="result-summary">${escapeHtml(reply || "Não veio resposta. Tenta de novo.")}</div>
+    </div>
+  `;
+
+  if (window.innerWidth <= 1024) {
+    container.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+}
+
+function initCalmai() {
+  const ta = document.getElementById("calmText");
+  const btn = document.getElementById("calmBtn");
+
+  if (ta) {
+    ta.addEventListener("input", updateCalmCounter);
+    updateCalmCounter();
+  }
+
+  if (btn) {
+    btn.addEventListener("click", async () => {
+      const base = normalizeBaseUrl(WORKER_BASE_URL);
+      if (!base || !base.startsWith("https://")) {
+        alert("Configure o WORKER_BASE_URL com https e sem barra no final.");
+        return;
+      }
+
+      const nameRaw = document.getElementById("calmName")?.value || "";
+      const textRaw = document.getElementById("calmText")?.value || "";
+
+      const userName = requireSafeText("Seu nome", nameRaw, { maxLen: 60, required: false });
+      const problemText = requireSafeText("Seu problema", textRaw, { maxLen: 500, required: true });
+      if (!problemText) return;
+
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      showCalmLoading();
+
+      try {
+        const payload = { userName: userName || "", text: problemText };
+        const res = await callApi(API_CALMAI, payload);
+        displayCalmResult(res);
+      } catch (err) {
+        showCalmError(String(err?.message || "Erro na IA."));
+      }
+    });
+  }
+}
+
+// ===============================
+// BOOT
+// ===============================
+document.addEventListener("DOMContentLoaded", () => {
+  initTabs();
+  initPriorizai();
+  initCalmai();
+});
