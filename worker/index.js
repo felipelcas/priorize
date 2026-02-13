@@ -1,6 +1,5 @@
 export default {
   async fetch(request, env) {
-    // CORS
     const cors = {
       "Access-Control-Allow-Origin": "*",
       "Access-Control-Allow-Methods": "POST, OPTIONS",
@@ -8,15 +7,10 @@ export default {
       "Access-Control-Max-Age": "86400",
     };
 
-    if (request.method === "OPTIONS") {
-      return new Response(null, { status: 204, headers: cors });
-    }
+    if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
 
     const url = new URL(request.url);
-
-    if (url.pathname !== "/prioritize") {
-      return new Response("Not Found", { status: 404, headers: cors });
-    }
+    if (url.pathname !== "/prioritize") return new Response("Not Found", { status: 404, headers: cors });
 
     if (request.method !== "POST") {
       return new Response(JSON.stringify({ error: "Use POST" }), {
@@ -35,42 +29,22 @@ export default {
       });
     }
 
-    const clampInt = (value, min, max, fallback) => {
-      const n = Number(value);
+    const clamp = (v, min, max, fallback) => {
+      const n = Number(v);
       if (!Number.isFinite(n)) return fallback;
       const i = Math.round(n);
-      if (i < min) return min;
-      if (i > max) return max;
-      return i;
-    };
-
-    const normalizeMethod = (m) => {
-      const raw = String(m || "").trim().toUpperCase();
-      const allowed = new Set(["IMPACT_EFFORT", "RICE", "MOSCOW", "GUT"]);
-      if (allowed.has(raw)) return raw;
-      return "IMPACT_EFFORT";
+      return Math.max(min, Math.min(max, i));
     };
 
     const userName = String(body.userName || "").trim();
-    const method = normalizeMethod(body.method);
     const tasks = Array.isArray(body.tasks) ? body.tasks : [];
 
-    // Aceita "time" (front atual) e também "effort" (compatibilidade)
     const filled = tasks
       .map((t) => {
         const title = String(t.title || "").trim();
         const description = String(t.description || "").trim();
-
-        const importance = clampInt(t.importance, 1, 5, 3);
-
-        // Compat: se vier effort, usa. Se vier time, usa.
-        const time = clampInt(
-          t.time ?? t.effort,
-          1,
-          5,
-          3
-        );
-
+        const importance = clamp(t.importance, 1, 5, 3);
+        const time = clamp(t.time ?? t.effort, 1, 5, 3);
         return { title, description, importance, time };
       })
       .filter((t) => t.title && t.description);
@@ -81,25 +55,17 @@ export default {
         headers: { ...cors, "Content-Type": "application/json" },
       });
     }
-
     if (filled.length < 3) {
-      return new Response(
-        JSON.stringify({ error: "Preencha no mínimo 3 tarefas completas." }),
-        {
-          status: 400,
-          headers: { ...cors, "Content-Type": "application/json" },
-        }
-      );
+      return new Response(JSON.stringify({ error: "Preencha no mínimo 3 tarefas completas." }), {
+        status: 400,
+        headers: { ...cors, "Content-Type": "application/json" },
+      });
     }
-
     if (!env.OPENAI_API_KEY) {
-      return new Response(
-        JSON.stringify({ error: "OPENAI_API_KEY não configurada no Worker." }),
-        {
-          status: 500,
-          headers: { ...cors, "Content-Type": "application/json" },
-        }
-      );
+      return new Response(JSON.stringify({ error: "OPENAI_API_KEY não configurada no Worker." }), {
+        status: 500,
+        headers: { ...cors, "Content-Type": "application/json" },
+      });
     }
 
     const model = env.OPENAI_MODEL || "gpt-4o-mini";
@@ -107,36 +73,25 @@ export default {
     const system = `
 Você é o PriorizAI.
 Fale simples, direto e amigável.
-O usuário pode escolher importância e tempo errado. Então use também a descrição para ajustar sua análise com carinho.
-Não invente fatos externos. Use só o que foi informado.
-Retorne APENAS JSON no schema.
-`.trim();
-
-    const rule = `
-Método Impacto e Esforço:
-- Faça primeiro o que ajuda mais e leva menos tempo.
-- Se algo é muito importante (prazo, gente depende, risco alto), pode subir mesmo sendo demorado.
-- Coisas pouco importantes e demoradas ficam por último.
+Use também a descrição para ajustar tempo e importância, se o usuário marcou errado.
+Não invente fatos externos.
+Retorne JSON.
 `.trim();
 
     const user = `
 Nome: ${userName}
-Método: ${method}
+Método: IMPACT_EFFORT
 
-Como aplicar:
-${rule}
+Regras:
+- Faça primeiro o que ajuda mais e leva menos tempo.
+- Se tiver prazo/urgência na descrição, considere isso.
+- Dê dicas práticas.
 
 Tarefas (JSON):
 ${JSON.stringify(filled)}
-
-Regras da resposta:
-- Use também a descrição para estimar o tempo real e a importância real.
-- Se a descrição indicar algo diferente do número, ajuste sem julgar.
-- Traga dicas práticas.
-- estimatedTimeSaved: inteiro de 0 a 80, realista.
 `.trim();
 
-    const jsonSchema = {
+    const schema = {
       name: "priorizai_result",
       strict: true,
       schema: {
@@ -159,12 +114,7 @@ Regras da resposta:
                 position: { type: "integer", minimum: 1, maximum: 10 },
                 title: { type: "string" },
                 explanation: { type: "string" },
-                keyPoints: {
-                  type: "array",
-                  minItems: 2,
-                  maxItems: 4,
-                  items: { type: "string" },
-                },
+                keyPoints: { type: "array", minItems: 2, maxItems: 4, items: { type: "string" } },
                 tip: { type: "string" },
               },
             },
@@ -173,9 +123,8 @@ Regras da resposta:
       },
     };
 
-    let resp;
-    try {
-      resp = await fetch("https://api.openai.com/v1/chat/completions", {
+    async function callOpenAI(response_format) {
+      return fetch("https://api.openai.com/v1/chat/completions", {
         method: "POST",
         headers: {
           Authorization: `Bearer ${env.OPENAI_API_KEY}`,
@@ -188,22 +137,35 @@ Regras da resposta:
             { role: "system", content: system },
             { role: "user", content: user },
           ],
-          response_format: { type: "json_schema", json_schema: jsonSchema },
+          response_format,
         }),
       });
-    } catch (e) {
-      return new Response(
-        JSON.stringify({ error: "Falha de rede ao chamar a IA." }),
-        { status: 500, headers: { ...cors, "Content-Type": "application/json" } }
-      );
     }
 
-    const data = await resp.json().catch(() => ({}));
+    // 1) Tenta json_schema (Structured Outputs)
+    let resp = await callOpenAI({ type: "json_schema", json_schema: schema });
+    let data = await resp.json().catch(() => ({}));
+
+    // 2) Se falhar por compatibilidade do response_format, faz fallback para json_object
+    if (!resp.ok) {
+      const msg = data?.error?.message || "";
+      const looksLikeSchemaUnsupported =
+        msg.toLowerCase().includes("response_format") || msg.toLowerCase().includes("json_schema");
+
+      if (looksLikeSchemaUnsupported) {
+        resp = await callOpenAI({ type: "json_object" });
+        data = await resp.json().catch(() => ({}));
+      }
+    }
 
     if (!resp.ok) {
+      console.error("OpenAI error:", data);
       return new Response(
-        JSON.stringify({ error: "Erro na IA", details: data }),
-        { status: 500, headers: { ...cors, "Content-Type": "application/json" } }
+        JSON.stringify({
+          error: "Erro na IA",
+          message: data?.error?.message || "Falha ao chamar a OpenAI.",
+        }),
+        { status: 502, headers: { ...cors, "Content-Type": "application/json" } }
       );
     }
 
@@ -212,10 +174,11 @@ Regras da resposta:
     try {
       parsed = JSON.parse(content);
     } catch {
-      return new Response(
-        JSON.stringify({ error: "A IA não retornou JSON válido.", raw: content }),
-        { status: 500, headers: { ...cors, "Content-Type": "application/json" } }
-      );
+      console.error("Invalid JSON from model:", content);
+      return new Response(JSON.stringify({ error: "Erro na IA", message: "A resposta não veio em JSON válido." }), {
+        status: 502,
+        headers: { ...cors, "Content-Type": "application/json" },
+      });
     }
 
     return new Response(JSON.stringify(parsed), {
