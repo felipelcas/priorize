@@ -1,225 +1,210 @@
+/* worker/src/index.js - Cloudflare Worker (API PriorizAI + CalmAI) */
 export default {
   async fetch(request, env) {
-    const cors = {
-      "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Methods": "POST, OPTIONS, GET",
-      "Access-Control-Allow-Headers": "Content-Type",
-      "Access-Control-Max-Age": "86400",
-    };
-
-    // Preflight CORS
-    if (request.method === "OPTIONS") {
-      return new Response(null, { status: 204, headers: cors });
-    }
-
     const url = new URL(request.url);
-    const path = url.pathname;
 
-    // Health
-    if (request.method === "GET" && (path === "/" || path === "/health")) {
-      return json({ ok: true, service: "priorizai-worker" }, 200, cors);
+    // CORS básico
+    if (request.method === "OPTIONS") {
+      return new Response(null, { status: 204, headers: corsHeaders() });
     }
 
-    // Só POST nos endpoints
-    if (request.method !== "POST") {
-      return json({ error: "Use POST." }, 405, cors);
-    }
+    try {
+      if (request.method === "GET" && url.pathname === "/") {
+        return json({ ok: true, service: "priorizai-worker" }, 200);
+      }
 
-    // Precisa de chave
-    if (!env.OPENAI_API_KEY) {
-      return json({ error: "OPENAI_API_KEY não configurada no Worker." }, 500, cors);
-    }
+      if (request.method === "POST" && url.pathname === "/prioritize") {
+        return await handlePrioritize(request, env);
+      }
 
-    // Body JSON
-    const body = await safeJson(request);
-    if (!body) {
-      return json({ error: "JSON inválido." }, 400, cors);
-    }
+      if (request.method === "POST" && url.pathname === "/calmai") {
+        return await handleCalmai(request, env);
+      }
 
-    // Rotas
-    if (path === "/prioritize") {
-      return handlePrioritize(body, env, cors);
+      return json({ error: "Rota não encontrada." }, 404);
+    } catch (err) {
+      return json({ error: err?.message || "Erro inesperado." }, 500);
     }
-
-    if (path === "/calmai") {
-      return handleCalmAI(body, env, cors);
-    }
-
-    return new Response("Not Found", { status: 404, headers: cors });
   },
 };
 
-/* -------------------------
-   Helpers
-------------------------- */
+function corsHeaders() {
+  return {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type",
+  };
+}
 
-function json(payload, status, cors) {
-  return new Response(JSON.stringify(payload), {
+function json(data, status = 200) {
+  return new Response(JSON.stringify(data), {
     status,
-    headers: { ...cors, "Content-Type": "application/json; charset=utf-8" },
+    headers: {
+      ...corsHeaders(),
+      "Content-Type": "application/json; charset=utf-8",
+    },
   });
 }
 
-async function safeJson(request) {
-  try {
-    return await request.json();
-  } catch {
-    return null;
-  }
+function cleanText(text) {
+  return String(text || "").replace(/\u0000/g, "").trim();
 }
 
-function cleanText(input, maxLen) {
-  const s = String(input ?? "")
-    .replace(/[\u0000-\u001F\u007F]/g, " ") // remove controles
-    .replace(/\s+/g, " ")
-    .trim();
+function looksLikeInjection(text) {
+  const t = cleanText(text).toLowerCase();
 
-  if (!s) return "";
+  // XSS comuns
+  const xss = ["<script", "</script", "<iframe", "<object", "<embed", "<svg", "javascript:", "onerror=", "onload="];
+  if (xss.some((p) => t.includes(p))) return true;
 
-  if (s.length > maxLen) return s.slice(0, maxLen);
-
-  return s;
-}
-
-function looksLikeInjection(s) {
-  const t = String(s || "").toLowerCase();
-
-  // Comentários SQL típicos
-  if (t.includes("--") || t.includes("/*") || t.includes("*/")) return true;
-
-  // Padrões clássicos
-  if (/\bunion\s+select\b/i.test(t)) return true;
-  if (/\b(or|and)\s+1\s*=\s*1\b/i.test(t)) return true;
-
-  // Script tags (não é SQL, mas é entrada maliciosa comum)
-  if (/<\s*script\b/i.test(t)) return true;
+  // SQLi (heurística)
+  const sqli = [
+    " union select",
+    "drop table",
+    "insert into",
+    "delete from",
+    "update ",
+    " or 1=1",
+    "' or '1'='1",
+    "\" or \"1\"=\"1",
+    "--",
+    "/*",
+    "*/",
+    ";--",
+  ];
+  if (sqli.some((p) => t.includes(p))) return true;
 
   return false;
 }
 
-function mustBeBetween(n, min, max) {
-  const x = Number(n);
-  if (!Number.isFinite(x)) return null;
-  if (x < min || x > max) return null;
-  return x;
+function mustBeString(name, val, { required = false, min = 0, max = 9999 } = {}) {
+  const v = cleanText(val);
+  if (required && !v) throw new Error(`Preencha: ${name}.`);
+  if (!required && !v) return "";
+
+  if (v.length < min) throw new Error(`${name} muito curto.`);
+  if (v.length > max) throw new Error(`${name} passou do limite de caracteres.`);
+  if (looksLikeInjection(v)) throw new Error(`${name} parece ter conteúdo perigoso.`);
+
+  return v;
 }
 
-/* -------------------------
-   /prioritize
-------------------------- */
+function mustBeInt(name, val, { min = 0, max = 999999 } = {}) {
+  const n = Number(val);
+  if (!Number.isInteger(n)) throw new Error(`${name} inválido.`);
+  if (n < min || n > max) throw new Error(`${name} fora do intervalo.`);
+  return n;
+}
 
-async function handlePrioritize(body, env, cors) {
-  const userName = cleanText(body.userName, 60);
-  const method = cleanText(body.method || "IMPACT_EFFORT", 30) || "IMPACT_EFFORT";
-  const tasksRaw = Array.isArray(body.tasks) ? body.tasks : [];
-
-  if (!userName) return json({ error: "Informe seu nome." }, 400, cors);
-  if (looksLikeInjection(userName)) return json({ error: "Nome com conteúdo inválido." }, 400, cors);
-
-  // Aceita campos antigos e novos (compatibilidade)
-  const filled = tasksRaw
-    .map((t) => {
-      const title = cleanText(t?.title, 120);
-      const description = cleanText(t?.description, 700);
-
-      // front pode mandar "time", "time_cost" ou "effort". Vamos aceitar qualquer um.
-      const importance = mustBeBetween(t?.importance ?? t?.user_chosen_importance, 1, 5);
-      const time = mustBeBetween(
-        t?.time ?? t?.time_cost ?? t?.effort ?? t?.user_chosen_time_cost,
-        1,
-        5
-      );
-
-      const importanceLabel = cleanText(t?.importanceLabel ?? t?.importance_label, 60);
-      const timeLabel = cleanText(t?.timeLabel ?? t?.time_label, 60);
-
-      return { title, description, importance, time, importanceLabel, timeLabel };
-    })
-    .filter((t) => t.title && t.description);
-
-  if (filled.length < 3) {
-    return json({ error: "Preencha no mínimo 3 tarefas completas." }, 400, cors);
+async function readJson(request) {
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    throw new Error("JSON inválido.");
   }
-  if (filled.length > 10) {
-    return json({ error: "No máximo 10 tarefas." }, 400, cors);
+  if (!body || typeof body !== "object") throw new Error("Body inválido.");
+  return body;
+}
+
+function requireOpenAIKey(env) {
+  const key = env?.OPENAI_API_KEY;
+  if (!key) throw new Error("OPENAI_API_KEY não configurada no Worker (Secrets/Vars).");
+  return key;
+}
+
+async function openaiChat(env, payload) {
+  const key = requireOpenAIKey(env);
+  const res = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${key}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+
+  const data = await res.json().catch(() => null);
+  if (!res.ok) {
+    const msg = data?.error?.message || "Erro na OpenAI.";
+    throw new Error(msg);
+  }
+  return data;
+}
+
+async function handlePrioritize(request, env) {
+  const body = await readJson(request);
+
+  const name = mustBeString("Seu nome", body.name, { required: true, min: 2, max: 60 });
+  const method = mustBeString("Método", body.method, { required: true, min: 3, max: 40 });
+
+  if (method !== "impact_effort") {
+    return json({ error: "Por enquanto, só o método Impacto e Esforço está liberado." }, 400);
   }
 
-  // Bloqueio básico de conteúdo malicioso
-  for (const t of filled) {
-    if (looksLikeInjection(t.title) || looksLikeInjection(t.description)) {
-      return json({ error: "Texto da tarefa com conteúdo inválido." }, 400, cors);
-    }
-    if (t.importance === null || t.time === null) {
-      return json({ error: "Escolha opções válidas para importância e tempo." }, 400, cors);
-    }
+  if (!Array.isArray(body.tasks)) {
+    return json({ error: "tasks deve ser uma lista." }, 400);
   }
 
-  const model = env.OPENAI_MODEL || "gpt-4o-mini";
+  const tasksRaw = body.tasks.slice(0, 10);
+  if (tasksRaw.length < 3) {
+    return json({ error: "Envie no mínimo 3 tarefas." }, 400);
+  }
 
-  const system = `
-Você é o PriorizAI.
-Fale simples, direto e amigável.
-Considere que o usuário pode errar a escolha de importância e tempo, então use também a descrição para ajustar a análise.
-Não invente fatos externos. Use só o que foi informado.
-Retorne APENAS JSON, seguindo o schema.
-`.trim();
+  const tasks = tasksRaw.map((t, idx) => {
+    const title = mustBeString(`Tarefa ${idx + 1} - título`, t.title, { required: true, min: 3, max: 80 });
+    const description = mustBeString(`Tarefa ${idx + 1} - descrição`, t.description, { required: true, min: 10, max: 800 });
 
-  const rule = `
-Método Impacto e Esforço:
-- Faça primeiro o que é mais importante e leva menos tempo.
-- Se algo é muito importante (prazo, gente depende, problema grande), pode subir mesmo sendo demorado.
-- Coisas pouco importantes e demoradas ficam por último.
-`.trim();
+    const importance = mustBeInt(`Tarefa ${idx + 1} - importância`, t.importance, { min: 1, max: 5 });
+    const time_cost = mustBeInt(`Tarefa ${idx + 1} - tempo`, t.time_cost, { min: 1, max: 5 });
 
-  const user = `
-Nome: ${userName}
-Método: ${method}
+    const importance_label = mustBeString(`Tarefa ${idx + 1} - rótulo importância`, t.importance_label, { required: true, min: 2, max: 40 });
+    const time_label = mustBeString(`Tarefa ${idx + 1} - rótulo tempo`, t.time_label, { required: true, min: 2, max: 40 });
 
-Como aplicar:
-${rule}
+    return { title, description, importance, time_cost, importance_label, time_label };
+  });
 
-Tarefas (JSON):
-${JSON.stringify(filled)}
+  const model = env?.OPENAI_MODEL || "gpt-4o-mini";
 
-Regras da resposta:
-- Faça um check: compare IMPORTÂNCIA e TEMPO escolhidos com a DESCRIÇÃO.
-- Se a descrição indicar urgência, considere isso.
-- Retorne uma tabela simples de ordem (position e title) e depois explique.
-- friendlyMessage: curto e personalizado.
-- summary: 2 a 3 frases.
-- Para cada tarefa: explanation (2 a 5 frases), keyPoints (2 a 4 itens), tip (1 frase).
-- estimatedTimeSaved: inteiro 0..80, realista.
-`.trim();
+  const system = [
+    "Você é o PriorizAI.",
+    "Fale como um colega de trabalho legal, simples e direto.",
+    "O usuário tem 16 anos e pouca instrução.",
+    "Use o nome do usuário e cite as tarefas para personalizar.",
+    "Muito importante: use também a descrição para estimar tempo/complexidade e importância real.",
+    "Se a escolha do usuário (importância/tempo) estiver incoerente com a descrição, ajuste sua análise sem julgar e explique gentilmente.",
+    "Não invente fatos externos. Use só o que foi informado.",
+    "Retorne SOMENTE JSON no schema pedido.",
+  ].join(" ");
 
-  const jsonSchema = {
-    name: "priorizai_result",
-    strict: true,
+  const rule =
+    "Método Impacto e Esforço: faça primeiro o que é MAIS IMPORTANTE e leva MENOS TEMPO. " +
+    "Depois o que é muito importante mesmo se levar mais tempo. " +
+    "Por último, coisas pouco importantes e demoradas.";
+
+  const schema = {
+    name: "PriorizeResult",
     schema: {
       type: "object",
       additionalProperties: false,
-      required: ["friendlyMessage", "summary", "estimatedTimeSaved", "rankedTasks"],
+      required: ["friendly_message", "method_used", "estimated_time_saved_percent", "summary", "ordered_tasks"],
       properties: {
-        friendlyMessage: { type: "string" },
+        friendly_message: { type: "string" },
+        method_used: { type: "string" },
+        estimated_time_saved_percent: { type: "integer", minimum: 0, maximum: 80 },
         summary: { type: "string" },
-        estimatedTimeSaved: { type: "integer", minimum: 0, maximum: 80 },
-        rankedTasks: {
+        ordered_tasks: {
           type: "array",
           minItems: 3,
-          maxItems: 10,
           items: {
             type: "object",
             additionalProperties: false,
-            required: ["position", "title", "explanation", "keyPoints", "tip"],
+            required: ["position", "task_title", "explanation", "key_points", "tip"],
             properties: {
               position: { type: "integer", minimum: 1, maximum: 10 },
-              title: { type: "string" },
+              task_title: { type: "string" },
               explanation: { type: "string" },
-              keyPoints: {
-                type: "array",
-                minItems: 2,
-                maxItems: 4,
-                items: { type: "string" },
-              },
+              key_points: { type: "array", minItems: 2, maxItems: 4, items: { type: "string" } },
               tip: { type: "string" },
             },
           },
@@ -228,103 +213,81 @@ Regras da resposta:
     },
   };
 
+  const user = {
+    name,
+    method,
+    rule,
+    tasks,
+    response_rules: [
+      "Compare IMPORTÂNCIA e TEMPO escolhidos com a DESCRIÇÃO.",
+      "Se a descrição indicar tempo maior/menor, considere isso.",
+      "Se a descrição indicar urgência (prazo/visita/entrega), considere isso.",
+      "Crie uma tabela simples (Ordem, Tarefa) na saída do front, mas aqui retorne no JSON apenas os dados.",
+      "friendly_message: curto e personalizado.",
+      "summary: 2 a 3 frases.",
+      "Para cada tarefa: explanation (2 a 5 frases), key_points (2 a 4 itens), tip (1 frase).",
+      "estimated_time_saved_percent: inteiro 0..80, realista.",
+    ],
+  };
+
+  const payload = {
+    model,
+    temperature: 0.6,
+    messages: [
+      { role: "system", content: system },
+      { role: "user", content: JSON.stringify(user) },
+    ],
+    response_format: { type: "json_schema", json_schema: schema },
+  };
+
+  const out = await openaiChat(env, payload);
+  const content = out?.choices?.[0]?.message?.content;
+  if (!content) throw new Error("Resposta vazia da OpenAI.");
+
+  let parsed;
   try {
-    const resp = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${env.OPENAI_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model,
-        temperature: 0.3,
-        messages: [
-          { role: "system", content: system },
-          { role: "user", content: user },
-        ],
-        response_format: { type: "json_schema", json_schema: jsonSchema },
-      }),
-    });
-
-    const data = await resp.json();
-
-    if (!resp.ok) {
-      return json({ error: "Erro na IA. Verifique o OPENAI_API_KEY e o modelo." }, 500, cors);
-    }
-
-    const content = data?.choices?.[0]?.message?.content || "";
-    let parsed;
-    try {
-      parsed = JSON.parse(content);
-    } catch {
-      return json({ error: "A IA não retornou JSON válido." }, 500, cors);
-    }
-
-    return json(parsed, 200, cors);
+    parsed = JSON.parse(content);
   } catch {
-    return json({ error: "Falha ao chamar a IA." }, 500, cors);
+    throw new Error("Não consegui ler a resposta da IA em JSON.");
   }
+
+  return json(parsed, 200);
 }
 
-/* -------------------------
-   /calmai
-------------------------- */
+async function handleCalmai(request, env) {
+  const body = await readJson(request);
 
-async function handleCalmAI(body, env, cors) {
-  // Nome pode ser usado para personalizar, mas aqui não precisa ser obrigatório
-  const userName = cleanText(body.userName, 60);
-  const text = cleanText(body.text, 500);
+  const name = mustBeString("Seu nome", body.name, { required: false, min: 0, max: 60 });
+  const text = mustBeString("Texto", body.text, { required: true, min: 10, max: 500 });
 
-  if (!text) return json({ error: "Escreva seu texto." }, 400, cors);
-  if (looksLikeInjection(text) || looksLikeInjection(userName)) {
-    return json({ error: "Texto com conteúdo inválido." }, 400, cors);
-  }
+  const model = env?.OPENAI_MODEL || "gpt-4o-mini";
 
-  const model = env.OPENAI_MODEL || "gpt-4o-mini";
+  const diva = [
+    "Você é a Diva do Caos, uma conselheira provocadora, amiga debochada e mentora perspicaz.",
+    "Fala de forma informal, cheia de gírias, provoca e cutuca os usuários, alternando entre carinho e ironia.",
+    "Sempre provoca os usuários.",
+    "Seja concisa.",
+    "Dê um conselho engraçado, inteligente, provocador e reflexivo.",
+    "NÃO invente fatos. Use só o que o usuário contou.",
+    "SEMPRE termine com UMA pergunta provocante e direta.",
+  ].join(" ");
 
-  const system = `
-Você é a Diva do Caos, uma conselheira provocadora, amiga debochada e mentora perspicaz.
-Fala de forma informal, com gírias, alternando entre carinho e ironia.
-Seja concisa.
-Dê um conselho engraçado, inteligente, provocador e reflexivo.
-Sempre termine com UMA pergunta provocante e direta.
-Não invente fatos externos. Use só o que o usuário contou.
-Responda em português do Brasil.
-`.trim();
+  const userText = name
+    ? `Nome (opcional): ${name}\nProblema: ${text}`
+    : `Problema: ${text}`;
 
-  const user = `
-${userName ? `Nome: ${userName}\n` : ""}Problema do usuário (até 500 caracteres):
-${text}
-`.trim();
+  const payload = {
+    model,
+    temperature: 0.9,
+    messages: [
+      { role: "system", content: diva },
+      { role: "user", content: userText },
+    ],
+  };
 
-  try {
-    const resp = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${env.OPENAI_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model,
-        temperature: 0.8,
-        messages: [
-          { role: "system", content: system },
-          { role: "user", content: user },
-        ],
-      }),
-    });
+  const out = await openaiChat(env, payload);
+  const reply = out?.choices?.[0]?.message?.content?.trim();
+  if (!reply) throw new Error("Resposta vazia da OpenAI.");
 
-    const data = await resp.json();
-
-    if (!resp.ok) {
-      return json({ error: "Erro na IA. Verifique o OPENAI_API_KEY e o modelo." }, 500, cors);
-    }
-
-    const reply = (data?.choices?.[0]?.message?.content || "").trim();
-    if (!reply) return json({ error: "Resposta vazia da IA." }, 500, cors);
-
-    return json({ reply }, 200, cors);
-  } catch {
-    return json({ error: "Falha ao chamar a IA." }, 500, cors);
-  }
+  return json({ reply }, 200);
 }
